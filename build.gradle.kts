@@ -19,6 +19,14 @@ subprojects {
         android.set(true)
     }
 
+    afterEvaluate {
+        if (tasks.findByName("clean") == null) {
+            tasks.register<Delete>("clean") {
+                delete(layout.buildDirectory)
+            }
+        }
+    }
+
     if (isLibraryModule) {
         apply(plugin = "org.jetbrains.dokka")
 
