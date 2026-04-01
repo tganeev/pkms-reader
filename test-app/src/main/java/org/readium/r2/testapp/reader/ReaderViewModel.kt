@@ -18,12 +18,9 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.HyperlinkNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -34,6 +31,7 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.SearchTry
 import org.readium.r2.shared.publication.services.search.search
@@ -98,16 +96,150 @@ class ReaderViewModel(
         readerInitData = readerInitData
     )
 
+    // ===== НОВЫЙ КОД: Таймер чтения и статистика =====
+
+    /**
+     * Таймер для отслеживания времени чтения
+     */
+    private val readingTimer = ReadingTimer(viewModelScope)
+    val readingTime: StateFlow<Long> = readingTimer.elapsedSeconds
+
+    /**
+     * Текущая позиция для подсчета страниц
+     */
+    private var lastSavedPosition: Locator? = null
+    private var lastSavedPage: Int = 0
+    private var totalPositions: Int = 0
+
+    /**
+     * Загрузка сохраненной статистики при инициализации
+     */
+    init {
+        viewModelScope.launch {
+            bookRepository.get(bookId)?.let { book ->
+                readingTimer.setTime(book.readingTime)
+                lastSavedPage = book.pagesRead
+                Timber.d("Loaded stats for book $bookId: time=${book.readingTime}s, pages=${book.pagesRead}")
+            }
+
+            // Предварительно загружаем общее количество позиций для расчета страниц
+            // Используем runBlocking для синхронного выполнения
+            totalPositions = runBlocking { publication.positions().size }
+            Timber.d("Total positions for book $bookId: $totalPositions")
+        }
+    }
+
+    /**
+     * Запускает таймер чтения
+     */
+    fun startReadingTimer() {
+        readingTimer.start()
+        Timber.d("Reading timer started for book $bookId")
+    }
+
+    /**
+     * Приостанавливает таймер чтения
+     */
+    fun pauseReadingTimer() {
+        readingTimer.pause()
+        Timber.d("Reading timer paused for book $bookId")
+
+        // Сохраняем статистику при паузе
+        viewModelScope.launch {
+            saveReadingStats()
+        }
+    }
+
+    /**
+     * Сохраняет текущую статистику чтения в базу данных
+     */
+    private suspend fun saveReadingStats() {
+        // Получаем текущий локатор из readerInitData (если есть)
+        val currentLocator = getCurrentLocator()
+
+        val currentPage = calculateCurrentPage(currentLocator)
+
+        // Обновляем страницы только если они увеличились
+        val newPagesRead = maxOf(lastSavedPage, currentPage)
+
+        if (newPagesRead != lastSavedPage) {
+            lastSavedPage = newPagesRead
+            Timber.d("Pages updated: $lastSavedPage")
+        }
+
+        // Сохраняем статистику
+        bookRepository.updateReadingStats(
+            bookId = bookId,
+            readingTime = readingTimer.elapsedSeconds.value,
+            pagesRead = newPagesRead,
+            locator = currentLocator
+        )
+    }
+
+    /**
+     * Получает текущий локатор из readerInitData
+     */
+    private fun getCurrentLocator(): Locator {
+        // Пытаемся получить локатор из readerInitData
+        return when (val data = readerInitData) {
+            is VisualReaderInitData -> data.initialLocation
+            is MediaReaderInitData -> null
+            else -> null
+        } ?: publication.locatorFromLink(publication.readingOrder.firstOrNull()!!)!!
+    }
+
+    /**
+     * Вычисляет номер текущей страницы на основе локатора
+     */
+    private fun calculateCurrentPage(locator: Locator): Int {
+        val position = locator.locations.position ?: 1
+
+        // Если у нас нет общего количества позиций, пробуем получить снова
+        if (totalPositions == 0) {
+            totalPositions = runBlocking { publication.positions().size }
+        }
+
+        // Возвращаем текущую позицию, но не больше общего количества
+        return position.coerceAtMost(totalPositions).coerceAtLeast(1)
+    }
+
+    /**
+     * Получает отформатированное время чтения для отображения
+     */
+    fun getFormattedReadingTime(): String {
+        return readingTimer.formatTime()
+    }
+
+    /**
+     * Получает текущий прогресс чтения в процентах
+     */
+    fun getReadingProgress(): Float {
+        val currentLocator = getCurrentLocator()
+        val currentPage = calculateCurrentPage(currentLocator)
+        return if (totalPositions > 0) {
+            currentPage.toFloat() / totalPositions.toFloat()
+        } else {
+            0f
+        }
+    }
+
+    // ===== КОНЕЦ НОВОГО КОДА =====
+
     override fun onCleared() {
-        // When the ReaderViewModel is disposed of, we want to close the publication to avoid
-        // using outdated information (such as the initial location) if the `ReaderActivity` is
-        // opened again with the same book.
+        // Сохраняем статистику перед закрытием ViewModel
+        viewModelScope.launch {
+            saveReadingStats()
+        }
+        readingTimer.pause()
         readerRepository.close(bookId)
     }
 
     fun saveProgression(locator: Locator) = viewModelScope.launch {
         Timber.v("Saving locator for book $bookId: $locator.")
         bookRepository.saveProgression(locator, bookId)
+
+        // Сохраняем статистику при каждом изменении позиции
+        saveReadingStats()
     }
 
     fun getBookmarks() = bookRepository.bookmarksForBook(bookId)

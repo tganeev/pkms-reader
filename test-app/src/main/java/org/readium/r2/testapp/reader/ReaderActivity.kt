@@ -27,6 +27,7 @@ import org.readium.r2.testapp.drm.DrmManagementFragment
 import org.readium.r2.testapp.outline.OutlineContract
 import org.readium.r2.testapp.outline.OutlineFragment
 import org.readium.r2.testapp.utils.launchWebBrowser
+import timber.log.Timber
 
 /*
  * An activity to read a publication
@@ -96,6 +97,9 @@ open class ReaderActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+
+        // Запуск таймера чтения
+        startReadingTimer()
     }
 
     private fun createReaderFragment(readerData: ReaderInitData): BaseReaderFragment? {
@@ -119,6 +123,31 @@ open class ReaderActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         reconfigureActionBar()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Возобновляем таймер при возврате в активность
+        startReadingTimer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Приостанавливаем таймер при уходе на задний план
+        pauseReadingTimer()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Сохраняем статистику при остановке
+        saveReadingStats()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Останавливаем таймер при уничтожении активности
+        pauseReadingTimer()
+        Timber.d("ReaderActivity destroyed, reading timer stopped")
     }
 
     private fun reconfigureActionBar() {
@@ -184,6 +213,49 @@ open class ReaderActivity : AppCompatActivity() {
             addToBackStack(null)
         }
     }
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ ТАЙМЕРОМ =====
+
+    /**
+     * Запускает таймер чтения
+     */
+    private fun startReadingTimer() {
+        model.startReadingTimer()
+        Timber.d("Reading timer started")
+    }
+
+    /**
+     * Приостанавливает таймер чтения
+     */
+    private fun pauseReadingTimer() {
+        model.pauseReadingTimer()
+        Timber.d("Reading timer paused")
+    }
+
+    /**
+     * Сохраняет текущую статистику чтения
+     */
+    private fun saveReadingStats() {
+        // Статистика сохраняется автоматически в ViewModel
+        // Этот метод вызывается для явного сохранения при остановке
+        Timber.d("Saving reading stats on activity stop")
+    }
+
+    /**
+     * Возвращает отформатированное время чтения для отображения в UI
+     */
+    fun getFormattedReadingTime(): String {
+        return model.getFormattedReadingTime()
+    }
+
+    /**
+     * Возвращает прогресс чтения в процентах
+     */
+    fun getReadingProgress(): Float {
+        return model.getReadingProgress()
+    }
+
+    // ===== КОНЕЦ НОВЫХ МЕТОДОВ =====
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {

@@ -1,8 +1,4 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
+// File: test-app/src/main/java/org/readium/r2/testapp/data/model/Book.kt
 
 package org.readium.r2.testapp.data.model
 
@@ -33,6 +29,13 @@ data class Book(
     val rawMediaType: String,
     @ColumnInfo(name = COVER)
     val cover: String,
+    // Новые поля
+    @ColumnInfo(name = READING_TIME, defaultValue = "0")
+    var readingTime: Long = 0, // Время чтения в секундах
+    @ColumnInfo(name = PAGES_READ, defaultValue = "0")
+    var pagesRead: Int = 0, // Количество прочитанных страниц
+    @ColumnInfo(name = LAST_READ_DATE)
+    var lastReadDate: Long? = null // Дата последнего открытия
 ) {
 
     constructor(
@@ -45,6 +48,9 @@ data class Book(
         progression: String? = null,
         mediaType: MediaType,
         cover: String,
+        readingTime: Long = 0,
+        pagesRead: Int = 0,
+        lastReadDate: Long? = null
     ) : this(
         id = id,
         creation = creation,
@@ -54,7 +60,10 @@ data class Book(
         identifier = identifier,
         progression = progression,
         rawMediaType = mediaType.toString(),
-        cover = cover
+        cover = cover,
+        readingTime = readingTime,
+        pagesRead = pagesRead,
+        lastReadDate = lastReadDate
     )
 
     val url: AbsoluteUrl get() = AbsoluteUrl(href)!!
@@ -74,5 +83,8 @@ data class Book(
         const val PROGRESSION = "progression"
         const val MEDIA_TYPE = "media_type"
         const val COVER = "cover"
+        const val READING_TIME = "reading_time"
+        const val PAGES_READ = "pages_read"
+        const val LAST_READ_DATE = "last_read_date"
     }
 }

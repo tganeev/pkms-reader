@@ -1,10 +1,7 @@
-<!--
-  Copyright 2023 Readium Foundation. All rights reserved.
-  Use of this source code is governed by the BSD-style license
-  available in the top-level LICENSE file of the project.
--->
+<!-- File: test-app/src/main/res/layout/item_recycle_book.xml -->
 
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/bookshelf_cardView"
     android:layout_width="120dp"
@@ -19,32 +16,74 @@
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="3"
             tools:ignore="UselessParent">
 
             <ImageView
                 android:id="@+id/bookshelf_coverImage"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:contentDescription="@string/cover_image" />
+                android:contentDescription="@string/cover_image"
+                android:scaleType="centerCrop" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="start|bottom"
                 android:background="@android:drawable/screen_background_dark_transparent"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:padding="8dp">
 
                 <TextView
                     android:id="@+id/bookshelf_titleText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:padding="16dp"
                     android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
+                    android:textSize="12sp"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
             </LinearLayout>
 
         </FrameLayout>
+
+        <!-- Контейнер для статистики -->
+        <LinearLayout
+            android:id="@+id/readingStatsLayout"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:padding="4dp"
+            android:background="?attr/colorSurfaceVariant"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/readingTimeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:maxLines="1"
+                tools:text="⏱️ 1ч 23мин" />
+
+            <TextView
+                android:id="@+id/pagesReadText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:maxLines="1"
+                tools:text="📄 45 стр." />
+
+            <TextView
+                android:id="@+id/lastReadText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:visibility="gone"
+                tools:text="🕒 сегодня" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

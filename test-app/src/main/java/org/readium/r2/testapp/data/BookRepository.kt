@@ -1,8 +1,4 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
+// File: test-app/src/main/java/org/readium/r2/testapp/data/BookRepository.kt
 
 package org.readium.r2.testapp.data
 
@@ -30,6 +26,27 @@ class BookRepository(
 
     suspend fun saveProgression(locator: Locator, bookId: Long) =
         booksDao.saveProgression(locator.toJSON().toString(), bookId)
+
+    // Обновление статистики чтения
+    suspend fun updateReadingStats(
+        bookId: Long,
+        readingTime: Long,
+        pagesRead: Int,
+        locator: Locator
+    ) {
+        booksDao.updateReadingStats(
+            id = bookId,
+            readingTime = readingTime,
+            pagesRead = pagesRead,
+            locator = locator.toJSON().toString(),
+            lastReadDate = System.currentTimeMillis()
+        )
+    }
+
+    // Получение книги для обновления
+    suspend fun getBook(bookId: Long): Book? = booksDao.get(bookId)
+
+    suspend fun updateBook(book: Book) = booksDao.updateBook(book)
 
     suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
         val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
@@ -91,7 +108,10 @@ class BookRepository(
             identifier = publication.metadata.identifier ?: "",
             mediaType = mediaType,
             progression = "{}",
-            cover = cover.path
+            cover = cover.path,
+            readingTime = 0,
+            pagesRead = 0,
+            lastReadDate = null
         )
         return booksDao.insertBook(book)
     }

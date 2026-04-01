@@ -11,6 +11,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import org.readium.r2.testapp.data.model.*
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.data.model.Bookmark
@@ -19,7 +21,7 @@ import org.readium.r2.testapp.data.model.Highlight
 
 @Database(
     entities = [Book::class, Bookmark::class, Highlight::class, Catalog::class],
-    version = 1,
+    version = 2, // Увеличиваем версию
     exportSchema = false
 )
 @TypeConverters(
@@ -45,9 +47,21 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "database"
-                ).build()
+                )
+                    .addMigrations(MIGRATION_1_2) // Добавляем миграцию
+                    .build()
                 INSTANCE = instance
                 return instance
+            }
+        }
+
+        // Миграция с версии 1 на 2
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Добавляем новые колонки
+                database.execSQL("ALTER TABLE books ADD COLUMN reading_time INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE books ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE books ADD COLUMN last_read_date INTEGER")
             }
         }
     }
