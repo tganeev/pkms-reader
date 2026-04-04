@@ -248,12 +248,8 @@ open class ReaderActivity : AppCompatActivity() {
         return model.getFormattedReadingTime()
     }
 
-    /**
-     * Возвращает прогресс чтения в процентах
-     */
-    fun getReadingProgress(): Float {
-        return model.getReadingProgress()
-    }
+
+
 
     // ===== КОНЕЦ НОВЫХ МЕТОДОВ =====
 

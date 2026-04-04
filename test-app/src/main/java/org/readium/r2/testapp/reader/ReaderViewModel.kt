@@ -21,7 +21,6 @@ import java.time.LocalDate
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.HyperlinkNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -55,13 +54,13 @@ import org.readium.r2.testapp.utils.createViewModelFactory
 import org.readium.r2.testapp.utils.extensions.toHtml
 import timber.log.Timber
 
-private var lastSavedTime: Long = 0
-
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(
     private val bookId: Long,
     private val readerRepository: ReaderRepository,
     private val bookRepository: BookRepository,
+    private var maxReachedPage: Int = 0
+
 ) : ViewModel(),
     EpubNavigatorFragment.Listener,
     ImageNavigatorFragment.Listener,
@@ -109,11 +108,19 @@ class ReaderViewModel(
     val readingTime: StateFlow<Long> = readingTimer.elapsedSeconds
 
     /**
-     * Текущая позиция для подсчета страниц
+     * Текущий локатор (обновляется из навигатора при каждом изменении)
+     */
+    private val _currentLocator = MutableStateFlow<Locator?>(null)
+    val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
+
+    /**
+     * Сохраненные значения для вычисления инкрементальных изменений
      */
     private var lastSavedPosition: Locator? = null
     private var lastSavedPage: Int = 0
-    private var totalPositions: Int = 0
+    private var lastSavedTime: Long = 0
+    private var _totalPositions: Int = 0
+    val totalPositions: Int get() = _totalPositions
 
     /**
      * Загрузка сохраненной статистики при инициализации
@@ -123,13 +130,12 @@ class ReaderViewModel(
             bookRepository.get(bookId)?.let { book ->
                 readingTimer.setTime(book.readingTime)
                 lastSavedPage = book.pagesRead
+                maxReachedPage = book.pagesRead  // Загружаем максимальную страницу
                 Timber.d("Loaded stats for book $bookId: time=${book.readingTime}s, pages=${book.pagesRead}")
             }
 
-            // Предварительно загружаем общее количество позиций для расчета страниц
-            // Используем runBlocking для синхронного выполнения
-            totalPositions = runBlocking { publication.positions().size }
-            Timber.d("Total positions for book $bookId: $totalPositions")
+            _totalPositions = publication.positions().size
+            Timber.d("Total positions for book $bookId: $_totalPositions")
         }
     }
 
@@ -146,78 +152,27 @@ class ReaderViewModel(
      */
     fun pauseReadingTimer() {
         readingTimer.pause()
-        Timber.d("Reading timer paused for book $bookId")
-
-        // Сохраняем статистику при паузе
+        Timber.d("Reading timer paused")
         viewModelScope.launch {
-            saveReadingStats()
+            saveReadingStats(updateTime = true)
         }
     }
 
     /**
-     * Сохраняет текущую статистику чтения в базу данных
+     * Обновляет текущий локатор из навигатора
      */
-    private suspend fun saveReadingStats() {
-        val currentLocator = getCurrentLocator()
-        val currentPage = calculateCurrentPage(currentLocator)
-        val currentTime = readingTimer.elapsedSeconds.value
-
-        // Получаем текущую дату
-        val today = LocalDate.now()
-
-        // Получаем существующую статистику за сегодня
-        val existingStats = bookRepository.getReadingStatsForBook(bookId).firstOrNull()
-        val todayStat = existingStats?.find { it.date == today }
-
-        // Вычисляем инкрементальные значения
-        val incrementalPages = if (todayStat != null) {
-            // Если уже есть запись за сегодня, добавляем разницу
-            val newPages = currentPage - lastSavedPage
-            maxOf(0, newPages)
-        } else {
-            // Если записи нет, это первое чтение за сегодня
-            currentPage
-        }
-
-        val incrementalHours = if (todayStat != null) {
-            // Если уже есть запись, добавляем разницу во времени
-            val newHours = (currentTime - lastSavedTime) / 3600.0
-            maxOf(0.0, newHours)
-        } else {
-            // Если записи нет, это первое чтение
-            currentTime / 3600.0
-        }
-
-        // Сохраняем ежедневную статистику
-        val readingStat = ReadingStat(
-            bookId = bookId,
-            date = today,
-            pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
-            hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
-        )
-        bookRepository.saveReadingStat(readingStat)
-
-        // Обновляем агрегированные значения в книге
-        val totalPages = bookRepository.getTotalPagesRead(bookId)
-        val totalHours = bookRepository.getTotalHoursRead(bookId)
-
-        bookRepository.updateReadingStats(
-            bookId = bookId,
-            readingTime = (totalHours * 3600).toLong(),
-            pagesRead = totalPages,
-            locator = currentLocator
-        )
-
-        // Обновляем сохраненные значения
-        lastSavedPage = currentPage
-        lastSavedTime = currentTime
+    fun updateCurrentLocator(locator: Locator) {
+        _currentLocator.value = locator
     }
 
     /**
-     * Получает текущий локатор из readerInitData
+     * Получает текущий локатор (из навигатора или fallback)
      */
     private fun getCurrentLocator(): Locator {
-        // Пытаемся получить локатор из readerInitData
+        // Сначала пытаемся получить актуальный локатор из навигатора
+        _currentLocator.value?.let { return it }
+
+        // Fallback: используем initialLocation
         return when (val data = readerInitData) {
             is VisualReaderInitData -> data.initialLocation
             is MediaReaderInitData -> null
@@ -230,15 +185,74 @@ class ReaderViewModel(
      */
     private fun calculateCurrentPage(locator: Locator): Int {
         val position = locator.locations.position ?: 1
+        return position.coerceAtLeast(1)
+    }
 
-        // Если у нас нет общего количества позиций, пробуем получить снова
-        if (totalPositions == 0) {
-            totalPositions = runBlocking { publication.positions().size }
+    /**
+     * Сохраняет текущую статистику чтения в базу данных
+     */
+    private suspend fun saveReadingStats() {
+        val currentLocator = getCurrentLocator()
+        val currentPage = calculateCurrentPage(currentLocator)
+        val currentTime = readingTimer.elapsedSeconds.value
+
+        // Обновляем максимальную достигнутую страницу
+        if (currentPage > maxReachedPage) {
+            maxReachedPage = currentPage
         }
 
-        // Возвращаем текущую позицию, но не больше общего количества
-        return position.coerceAtMost(totalPositions).coerceAtLeast(1)
+        // Для отображения на обложке используем МАКСИМАЛЬНУЮ страницу
+        val displayPage = maxReachedPage
+
+        val today = LocalDate.now()
+
+        // Получаем существующую статистику за сегодня
+        val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
+        val todayStat = existingStats.find { it.date == today }
+
+        // Вычисляем инкрементальные значения на основе МАКСИМАЛЬНОЙ страницы
+        val incrementalPages = if (lastSavedPage > 0) {
+            maxOf(0, displayPage - lastSavedPage)
+        } else {
+            displayPage
+        }
+
+        val incrementalHours = if (lastSavedTime > 0) {
+            maxOf(0.0, (currentTime - lastSavedTime) / 3600.0)
+        } else {
+            currentTime / 3600.0
+        }
+
+        // Если есть изменения, сохраняем
+        if (incrementalPages > 0 || incrementalHours > 0) {
+            // Сохраняем ежедневную статистику
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
+                hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
+            )
+            bookRepository.saveReadingStat(readingStat)
+
+            // Обновляем агрегированные значения в книге
+            val totalPages = bookRepository.getTotalPagesRead(bookId)
+            val totalHours = bookRepository.getTotalHoursRead(bookId)
+
+            bookRepository.updateReadingStats(
+                bookId = bookId,
+                readingTime = (totalHours * 3600).toLong(),
+                pagesRead = totalPages,
+                locator = currentLocator
+            )
+
+            Timber.d("Saved stats - Current page: $currentPage, Max page: $maxReachedPage, Display page: $displayPage, Increment: +$incrementalPages")
+        }
+
+        // Обновляем сохраненные значения
+        lastSavedPage = displayPage
+        lastSavedTime = currentTime
     }
+
 
     /**
      * Получает отформатированное время чтения для отображения
@@ -250,7 +264,7 @@ class ReaderViewModel(
     /**
      * Получает текущий прогресс чтения в процентах
      */
-    fun getReadingProgress(): Float {
+    suspend fun getReadingProgress(): Float {
         val currentLocator = getCurrentLocator()
         val currentPage = calculateCurrentPage(currentLocator)
         return if (totalPositions > 0) {
@@ -260,24 +274,95 @@ class ReaderViewModel(
         }
     }
 
-    // ===== КОНЕЦ НОВОГО КОДА =====
+    // ===== СОХРАНЕНИЕ ПРОГРЕССА =====
 
-    override fun onCleared() {
-        // Сохраняем статистику перед закрытием ViewModel
-        viewModelScope.launch {
-            saveReadingStats()
-        }
-        readingTimer.pause()
-        readerRepository.close(bookId)
-    }
-
+    /**
+     * Сохраняет прогресс (вызывается при каждом перелистывании)
+     * Сохраняет только позицию, НЕ время
+     */
     fun saveProgression(locator: Locator) = viewModelScope.launch {
         Timber.v("Saving locator for book $bookId: $locator.")
+        updateCurrentLocator(locator)
         bookRepository.saveProgression(locator, bookId)
 
-        // Сохраняем статистику при каждом изменении позиции
-        saveReadingStats()
+        // Сохраняем ТОЛЬКО страницы, время не трогаем
+        saveReadingStats(updateTime = false)
     }
+
+    /**
+     * Сохраняет полную статистику (вызывается при паузе/закрытии)
+     */
+    private suspend fun saveFullStats() {
+        saveReadingStats(updateTime = true)
+    }
+
+    /**
+     * Сохраняет статистику
+     * @param updateTime - если true, обновляет время; если false - только страницы
+     */
+    private suspend fun saveReadingStats(updateTime: Boolean = true) {
+        val currentLocator = getCurrentLocator()
+        val currentPage = calculateCurrentPage(currentLocator)
+
+        // Обновляем максимальную достигнутую страницу
+        if (currentPage > maxReachedPage) {
+            maxReachedPage = currentPage
+        }
+
+        val displayPage = maxReachedPage
+
+        // Время обновляем только если нужно
+        val currentTime = if (updateTime) readingTimer.elapsedSeconds.value else lastSavedTime
+
+        val today = LocalDate.now()
+        val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
+        val todayStat = existingStats.find { it.date == today }
+
+        // Вычисляем добавленные страницы
+        val incrementalPages = if (displayPage > lastSavedPage) {
+            displayPage - lastSavedPage
+        } else {
+            0
+        }
+
+        // Вычисляем добавленное время (только если updateTime = true)
+        val incrementalHours = if (updateTime && lastSavedTime > 0 && currentTime > lastSavedTime) {
+            (currentTime - lastSavedTime) / 3600.0
+        } else if (updateTime && lastSavedTime == 0L) {
+            currentTime / 3600.0
+        } else {
+            0.0
+        }
+
+        if (incrementalPages > 0 || incrementalHours > 0) {
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
+                hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
+            )
+            bookRepository.saveReadingStat(readingStat)
+
+            val totalPages = bookRepository.getTotalPagesRead(bookId)
+            val totalHours = bookRepository.getTotalHoursRead(bookId)
+
+            bookRepository.updateReadingStats(
+                bookId = bookId,
+                readingTime = (totalHours * 3600).toLong(),
+                pagesRead = totalPages,
+                locator = currentLocator
+            )
+
+            Timber.d("Saved stats - Pages: +$incrementalPages, Hours: +$incrementalHours")
+        }
+
+        lastSavedPage = displayPage
+        if (updateTime) {
+            lastSavedTime = currentTime
+        }
+    }
+
+    // ===== ЗАКЛАДКИ =====
 
     fun getBookmarks() = bookRepository.bookmarksForBook(bookId)
 
@@ -294,7 +379,7 @@ class ReaderViewModel(
         bookRepository.deleteBookmark(id)
     }
 
-    // Highlights
+    // ===== ВЫДЕЛЕНИЯ (HIGHLIGHTS) =====
 
     val highlights: Flow<List<Highlight>> by lazy {
         bookRepository.highlightsForBook(bookId)
@@ -329,8 +414,6 @@ class ReaderViewModel(
             locator = locator,
             style = style,
             extras = mapOf(
-                // We store the highlight's database ID in the extras map, for easy retrieval
-                // later. You can store arbitrary information in the map.
                 "id" to id
             )
         )
@@ -384,7 +467,7 @@ class ReaderViewModel(
         bookRepository.deleteHighlight(id)
     }
 
-    // Search
+    // ===== ПОИСК =====
 
     fun search(query: String) = viewModelScope.launch {
         if (query == lastSearchQuery) return@launch
@@ -439,7 +522,7 @@ class ReaderViewModel(
         SearchPagingSource(listener = PagingSourceListener())
     }
 
-    // Navigator.Listener
+    // ===== NAVIGATOR LISTENER =====
 
     override fun onResourceLoadFailed(href: Url, error: ReadError) {
         activityChannel.send(
@@ -472,7 +555,7 @@ class ReaderViewModel(
             else -> true
         }
 
-    // Search
+    // ===== SEARCH PAGING SOURCE =====
 
     inner class PagingSourceListener : SearchPagingSource.Listener {
         override suspend fun next(): SearchTry<LocatorCollection?> {
@@ -487,7 +570,17 @@ class ReaderViewModel(
         Pager(PagingConfig(pageSize = 20), pagingSourceFactory = pagingSourceFactory)
             .flow.cachedIn(viewModelScope)
 
-    // Events
+    // ===== ON CLEARED =====
+
+    override fun onCleared() {
+        viewModelScope.launch {
+            saveReadingStats(updateTime = true)
+        }
+        readingTimer.pause()
+        readerRepository.close(bookId)
+    }
+
+    // ===== EVENTS =====
 
     sealed class ActivityCommand {
         object OpenOutlineRequested : ActivityCommand()

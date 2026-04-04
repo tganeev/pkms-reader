@@ -84,6 +84,7 @@ import org.readium.r2.testapp.utils.padSystemUi
 import org.readium.r2.testapp.utils.showSystemUi
 import org.readium.r2.testapp.utils.toggleSystemUi
 import org.readium.r2.testapp.utils.viewLifecycle
+import timber.log.Timber
 
 /*
  * Base reader fragment class
@@ -211,18 +212,16 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 navigator.currentLocator
-                    .onEach { model.saveProgression(it) }
+                    .filterNotNull()
+                    .onEach { locator ->
+                        model.saveProgression(locator)
+
+                        // Обновляем отображение текущей страницы
+                        val position = locator.locations.position ?: 1
+                        binding.currentPageText?.text = "Стр. $position / ${model.totalPositions}"
+                    }
                     .launchIn(this)
             }
-        }
-
-        (navigator as? DecorableNavigator)
-            ?.addDecorationListener("highlights", decorationListener)
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            setupHighlights(viewLifecycleOwner.lifecycleScope)
-            setupSearch(viewLifecycleOwner.lifecycleScope)
-            setupTts()
         }
     }
 
