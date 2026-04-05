@@ -8,6 +8,7 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.*
 
+
 @Dao
 interface BooksDao {
 
@@ -101,4 +102,7 @@ interface BooksDao {
 
     @Query("SELECT SUM(hours_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalHoursRead(bookId: Long): Double?
+
+    @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
+    suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?)
 }

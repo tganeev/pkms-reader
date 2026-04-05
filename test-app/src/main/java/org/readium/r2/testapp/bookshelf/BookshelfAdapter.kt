@@ -1,14 +1,9 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -25,6 +20,12 @@ class BookshelfAdapter(
     private val onBookClick: (Book) -> Unit,
     private val onBookLongClick: (Book) -> Unit,
 ) : ListAdapter<Book, BookshelfAdapter.ViewHolder>(BookListDiff()) {
+
+    private var onEditBookClick: ((Book) -> Unit)? = null
+
+    fun setOnEditBookClick(listener: (Book) -> Unit) {
+        onEditBookClick = listener
+    }
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -57,7 +58,7 @@ class BookshelfAdapter(
             // Отображаем статистику
             binding.readingStatsLayout.visibility = View.VISIBLE
 
-            // Форматируем время чтения (уже в секундах)
+            // Форматируем время чтения
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
@@ -76,10 +77,32 @@ class BookshelfAdapter(
             binding.root.singleClick {
                 onBookClick(book)
             }
+
             binding.root.setOnLongClickListener {
-                onBookLongClick(book)
+                showContextMenu(book)
                 true
             }
+        }
+
+        private fun showContextMenu(book: Book) {
+            val popupMenu = PopupMenu(binding.root.context, binding.root)
+            popupMenu.menuInflater.inflate(R.menu.menu_book_context, popupMenu.menu)
+
+            popupMenu.setOnMenuItemClickListener { menuItem ->
+                when (menuItem.itemId) {
+                    R.id.action_edit -> {
+                        onEditBookClick?.invoke(book)
+                        true
+                    }
+                    R.id.action_delete -> {
+                        onBookLongClick(book)
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            popupMenu.show()
         }
 
         private fun formatReadingTime(seconds: Long): String {

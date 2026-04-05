@@ -58,6 +58,11 @@ class BookshelfFragment : Fragment() {
     private val app: Application
         get() = requireContext().applicationContext as Application
 
+    fun showEditBookDialog(book: Book) {
+        val dialog = EditBookDialogFragment.newInstance(book)
+        dialog.show(childFragmentManager, "EditBookDialog")
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -82,6 +87,10 @@ class BookshelfFragment : Fragment() {
             },
             onBookLongClick = { book -> confirmDeleteBook(book) }
         )
+
+        bookshelfAdapter.setOnEditBookClick { book ->
+            showEditBookDialog(book)
+        }
 
         appStoragePickerLauncher =
             registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->

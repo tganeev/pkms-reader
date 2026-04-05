@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.mediatype.MediaType
+import java.io.Serializable
 
 @Entity(tableName = Book.TABLE_NAME)
 data class Book(
@@ -33,7 +34,7 @@ data class Book(
     var pagesRead: Int = 0,
     @ColumnInfo(name = LAST_READ_DATE)
     var lastReadDate: Long? = null
-) {
+) : Serializable {
     constructor(
         id: Long? = null,
         creation: Long? = null,

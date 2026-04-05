@@ -74,6 +74,12 @@ class BookRepository(
     suspend fun highlightById(id: Long): Highlight? =
         booksDao.getHighlightById(id)
 
+    suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?) {
+        booksDao.updateBookTitleAndAuthor(bookId, title, author)
+    }
+
+
+
     fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
         booksDao.getHighlightsForBook(bookId)
 

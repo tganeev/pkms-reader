@@ -11,6 +11,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.toUrl
@@ -18,6 +19,7 @@ import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.reader.OpeningError
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.EventChannel
+import timber.log.Timber
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -26,6 +28,19 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
 
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
+
+    fun updateBookMetadata(bookId: Long, title: String, author: String?) {
+        viewModelScope.launch {
+            try {
+                app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
+                // Обновляем список книг - refresh
+                app.bookRepository.books().firstOrNull()
+                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
+            } catch (e: Exception) {
+                android.util.Log.e("BookshelfViewModel", "Failed to update book metadata", e)
+            }
+        }
+    }
 
     fun deletePublication(book: Book) =
         viewModelScope.launch {
@@ -44,6 +59,8 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         app.bookshelf.addPublicationFromWeb(url)
     }
 
+
+
     fun openPublication(
         bookId: Long,
     ) {
@@ -59,6 +76,8 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
                 }
         }
     }
+
+
 
     sealed class Event {
 
