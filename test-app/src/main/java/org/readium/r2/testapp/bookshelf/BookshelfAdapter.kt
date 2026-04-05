@@ -1,9 +1,10 @@
 package org.readium.r2.testapp.bookshelf
 
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -22,6 +23,8 @@ class BookshelfAdapter(
 ) : ListAdapter<Book, BookshelfAdapter.ViewHolder>(BookListDiff()) {
 
     private var onEditBookClick: ((Book) -> Unit)? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var hideRunnable: Runnable? = null
 
     fun setOnEditBookClick(listener: (Book) -> Unit) {
         onEditBookClick = listener
@@ -74,35 +77,54 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
-            binding.root.singleClick {
-                onBookClick(book)
-            }
+            // Скрываем overlay по умолчанию
+            binding.actionOverlay.visibility = View.GONE
 
+            // Обработка долгого нажатия - показываем overlay
             binding.root.setOnLongClickListener {
-                showContextMenu(book)
+                showOverlay(book)
                 true
             }
-        }
 
-        private fun showContextMenu(book: Book) {
-            val popupMenu = PopupMenu(binding.root.context, binding.root)
-            popupMenu.menuInflater.inflate(R.menu.menu_book_context, popupMenu.menu)
-
-            popupMenu.setOnMenuItemClickListener { menuItem ->
-                when (menuItem.itemId) {
-                    R.id.action_edit -> {
-                        onEditBookClick?.invoke(book)
-                        true
-                    }
-                    R.id.action_delete -> {
-                        onBookLongClick(book)
-                        true
-                    }
-                    else -> false
+            // Клик по карточке - открыть книгу (только если overlay не виден)
+            binding.root.setOnClickListener {
+                if (binding.actionOverlay.visibility == View.VISIBLE) {
+                    hideOverlay()
+                } else {
+                    onBookClick(book)
                 }
             }
 
-            popupMenu.show()
+            // Кнопка редактирования
+            binding.btnEdit.setOnClickListener {
+                hideOverlay()
+                onEditBookClick?.invoke(book)
+            }
+
+            // Кнопка удаления
+            binding.btnDelete.setOnClickListener {
+                hideOverlay()
+                onBookLongClick(book)
+            }
+        }
+
+        private fun showOverlay(book: Book) {
+            // Скрываем предыдущий таймер
+            hideRunnable?.let { handler.removeCallbacks(it) }
+
+            // Показываем overlay
+            binding.actionOverlay.visibility = View.VISIBLE
+
+            // Автоматически скрываем через 3 секунды
+            hideRunnable = Runnable {
+                hideOverlay()
+            }
+            handler.postDelayed(hideRunnable!!, 3000)
+        }
+
+        private fun hideOverlay() {
+            binding.actionOverlay.visibility = View.GONE
+            hideRunnable?.let { handler.removeCallbacks(it) }
         }
 
         private fun formatReadingTime(seconds: Long): String {

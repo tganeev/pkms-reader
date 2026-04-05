@@ -87,6 +87,9 @@ class BookshelfFragment : Fragment() {
             },
             onBookLongClick = { book -> confirmDeleteBook(book) }
         )
+        bookshelfAdapter.setOnEditBookClick { book ->
+            showEditBookDialog(book)
+        }
 
         bookshelfAdapter.setOnEditBookClick { book ->
             showEditBookDialog(book)
