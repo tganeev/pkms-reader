@@ -105,4 +105,30 @@ interface BooksDao {
 
     @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
     suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?)
+
+    @Query("UPDATE books SET reading_time = :seconds WHERE id = :bookId")
+    suspend fun updateBookReadingTime(bookId: Long, seconds: Long)
+
+    @Query("UPDATE books SET pages_read = :pages WHERE id = :bookId")
+    suspend fun updateBookPages(bookId: Long, pages: Int)
+
+    // Добавьте эти методы в интерфейс BooksDao
+
+    @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
+    suspend fun getReadingStatByDate(bookId: Long, date: String): ReadingStat?
+
+    @Query("""
+    UPDATE reading_stats 
+    SET hours_read = hours_read + :hoursToAdd,
+        pages_read = pages_read + :pagesToAdd
+    WHERE book_id = :bookId AND date = :date
+""")
+    suspend fun addReadingTimeToDate(
+        bookId: Long,
+        date: String,
+        hoursToAdd: Double,
+        pagesToAdd: Int
+    )
+
+
 }

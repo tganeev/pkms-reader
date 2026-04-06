@@ -17,6 +17,8 @@ import androidx.fragment.app.FragmentResultListener
 import androidx.fragment.app.commit
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.toUri
 import org.readium.r2.testapp.Application
@@ -97,10 +99,12 @@ open class ReaderActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-
+        Timber.d("ReaderActivity onCreate - starting timer")
         // Запуск таймера чтения
         startReadingTimer()
     }
+
+
 
     private fun createReaderFragment(readerData: ReaderInitData): BaseReaderFragment? {
         val readerClass: Class<out Fragment>? = when (readerData) {
@@ -128,26 +132,27 @@ open class ReaderActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         // Возобновляем таймер при возврате в активность
+        Timber.d("ReaderActivity onResume - starting timer")
         startReadingTimer()
     }
 
     override fun onPause() {
         super.onPause()
         // Приостанавливаем таймер при уходе на задний план
+        Timber.d("ReaderActivity onPause - pausing timer")
         pauseReadingTimer()
     }
 
     override fun onStop() {
         super.onStop()
-        // Сохраняем статистику при остановке
-        saveReadingStats()
+        // Статистика сохраняется автоматически
+        Timber.d("ReaderActivity onStop")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Останавливаем таймер при уничтожении активности
+        Timber.d("ReaderActivity onDestroy - pausing timer")
         pauseReadingTimer()
-        Timber.d("ReaderActivity destroyed, reading timer stopped")
     }
 
     private fun reconfigureActionBar() {
@@ -230,6 +235,13 @@ open class ReaderActivity : AppCompatActivity() {
     private fun pauseReadingTimer() {
         model.pauseReadingTimer()
         Timber.d("Reading timer paused")
+    }
+
+    private fun saveReadingTime() {
+        lifecycleScope.launch {
+            //model.saveReadingTime()
+            Timber.d("Reading time saved on activity stop")
+        }
     }
 
     /**

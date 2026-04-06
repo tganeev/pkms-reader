@@ -1,11 +1,10 @@
-// File: test-app/src/main/java/org/readium/r2/testapp/data/BookRepository.kt
-
 package org.readium.r2.testapp.data
 
 import androidx.annotation.ColorInt
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -18,6 +17,7 @@ import org.readium.r2.testapp.data.model.Bookmark
 import org.readium.r2.testapp.data.model.Highlight
 import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
+import timber.log.Timber
 
 class BookRepository(
     private val booksDao: BooksDao,
@@ -29,7 +29,6 @@ class BookRepository(
     suspend fun saveProgression(locator: Locator, bookId: Long) =
         booksDao.saveProgression(locator.toJSON().toString(), bookId)
 
-    // Обновление статистики чтения
     suspend fun updateReadingStats(
         bookId: Long,
         readingTime: Long,
@@ -45,10 +44,72 @@ class BookRepository(
         )
     }
 
-    // Получение книги для обновления
     suspend fun getBook(bookId: Long): Book? = booksDao.get(bookId)
 
     suspend fun updateBook(book: Book) = booksDao.updateBook(book)
+
+    suspend fun updateBookPages(bookId: Long, pages: Int) {
+        Timber.d("updateBookPages: bookId=$bookId, pages=$pages")
+        booksDao.updateBookPages(bookId, pages)
+    }
+
+    suspend fun updateBookReadingTime(bookId: Long, seconds: Long) {
+        Timber.d("updateBookReadingTime: bookId=$bookId, seconds=$seconds")
+        booksDao.updateBookReadingTime(bookId, seconds)
+    }
+
+    // ===== МЕТОДЫ ДЛЯ РАБОТЫ СО СТАТИСТИКОЙ ПО ДАТАМ =====
+
+    /**
+     * Сохраняет время чтения за текущую дату
+     */
+    suspend fun addReadingTime(bookId: Long, seconds: Long) {
+        val today = LocalDate.now()
+        val hoursToAdd = seconds / 3600.0
+
+        Timber.d("addReadingTime: bookId=$bookId, seconds=$seconds, hoursToAdd=$hoursToAdd, date=$today")
+
+        val existingStat = booksDao.getReadingStatByDate(bookId, today.toString())
+
+        if (existingStat == null) {
+            // Создаем новую запись
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = 0,
+                hoursRead = hoursToAdd
+            )
+            booksDao.insertReadingStat(readingStat)
+            Timber.d("Created new reading stat for $today: $hoursToAdd hours")
+        } else {
+            // Обновляем существующую
+            booksDao.addReadingTimeToDate(bookId, today.toString(), hoursToAdd, 0)
+            Timber.d("Updated existing reading stat for $today: +$hoursToAdd hours (was ${existingStat.hoursRead})")
+        }
+
+        // Обновляем общее время на обложке (сумма за все дни)
+        updateTotalReadingTime(bookId)
+    }
+
+    /**
+     * Обновляет общее время на обложке (сумма за все дни)
+     */
+    private suspend fun updateTotalReadingTime(bookId: Long) {
+        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
+        val totalSeconds = (totalHours * 3600).toLong()
+        booksDao.updateBookReadingTime(bookId, totalSeconds)
+        Timber.d("Total reading time updated: $totalSeconds seconds ($totalHours hours)")
+    }
+
+    /**
+     * Получает общее время чтения для обложки
+     */
+    suspend fun getTotalReadingTime(bookId: Long): Long {
+        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
+        return (totalHours * 3600).toLong()
+    }
+
+    // ===== СУЩЕСТВУЮЩИЕ МЕТОДЫ =====
 
     suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
         val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
@@ -62,7 +123,6 @@ class BookRepository(
             location = locator.locations.toJSON().toString(),
             locatorText = Locator.Text().toJSON().toString()
         )
-
         return booksDao.insertBookmark(bookmark)
     }
 
@@ -77,8 +137,6 @@ class BookRepository(
     suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?) {
         booksDao.updateBookTitleAndAuthor(bookId, title, author)
     }
-
-
 
     fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
         booksDao.getHighlightsForBook(bookId)
@@ -112,7 +170,7 @@ class BookRepository(
             creation = DateTime().toDate().time,
             title = publication.metadata.title ?: url.filename,
             author = publication.metadata.authorName,
-            identifier = publication.metadata.identifier, // Добавляем identifier
+            identifier = publication.metadata.identifier,
             href = url.toString(),
             mediaType = mediaType,
             progression = "{}",
@@ -132,7 +190,6 @@ class BookRepository(
     }
 
     suspend fun deleteReadingStat(bookId: Long, date: LocalDate) {
-        // Конвертируем LocalDate в строку для запроса
         booksDao.deleteReadingStat(bookId, date.toString())
     }
 
@@ -144,6 +201,4 @@ class BookRepository(
 
     suspend fun deleteBook(id: Long) =
         booksDao.deleteBook(id)
-
-
 }

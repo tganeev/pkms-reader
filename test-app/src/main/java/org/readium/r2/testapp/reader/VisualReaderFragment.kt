@@ -214,11 +214,22 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 navigator.currentLocator
                     .filterNotNull()
                     .onEach { locator ->
+                        // Детальное логирование для PDF
+                        Timber.d("=== NAVIGATOR LOCATOR ===")
+                        Timber.d("href: ${locator.href}")
+                        Timber.d("position: ${locator.locations.position}")
+                        Timber.d("totalProgression: ${locator.locations.totalProgression}")
+                        Timber.d("mediaType: ${locator.mediaType}")
+
                         model.saveProgression(locator)
 
-                        // Обновляем отображение текущей страницы
-                        val position = locator.locations.position ?: 1
-                        binding.currentPageText?.text = "Стр. $position / ${model.totalPositions}"
+                        val currentPage = model.calculateCurrentPage(locator)
+                        val totalPages = model.totalPositions
+                        if (totalPages > 0) {
+                            binding.currentPageText?.text = "$currentPage / $totalPages"
+                        } else {
+                            binding.currentPageText?.text = currentPage.toString()
+                        }
                     }
                     .launchIn(this)
             }

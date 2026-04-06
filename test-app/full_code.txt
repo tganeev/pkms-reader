@@ -1,8 +1,8 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Wed Apr  1 02:57:59 PM +05 2026
-Директория проекта: /opt/goinfre/kindlyfr/Projects/kotlin-toolkit/test-app
+Дата создания: Mon Apr  6 03:35:08 PM +05 2026
+Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/pkms-reader/test-app
 ================================================================================
 
 
@@ -39,9 +39,10 @@
     <application
         android:name=".Application"
         android:icon="@mipmap/ic_launcher"
-        android:label="Readium"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="n">
         <activity android:name=".MainActivity"
@@ -225,7 +226,7 @@
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/MainActivity.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 /*
@@ -237,11 +238,14 @@
 package org.readium.r2.testapp
 
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
@@ -249,11 +253,14 @@ import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.launch
+import org.readium.r2.testapp.sync.SyncManager
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var navController: NavController
     private val viewModel: MainViewModel by viewModels()
+    private lateinit var syncManager: SyncManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -281,7 +288,70 @@ class MainActivity : AppCompatActivity() {
         navView.setupWithNavController(navController)
 
         viewModel.channel.receive(this) { handleEvent(it) }
+        syncManager = SyncManager(this, (application as Application).bookRepository)
     }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sync -> {
+                performSync()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun performSync() {
+        lifecycleScope.launch {
+            val snackbar = Snackbar.make(
+                findViewById(android.R.id.content),
+                "Синхронизация...",
+                Snackbar.LENGTH_INDEFINITE
+            )
+            snackbar.show()
+
+            try {
+                val app = application as Application
+                val result = app.syncManager.syncAllBooks()
+
+                snackbar.dismiss()
+
+                result.onSuccess { response ->
+                    val message = "Синхронизация завершена:\n" +
+                        "📚 Создано книг: ${response.booksCreated}\n" +
+                        "🔄 Обновлено книг: ${response.booksUpdated}\n" +
+                        "📊 Создано записей: ${response.statsCreated}\n" +
+                        "🔄 Обновлено записей: ${response.statsUpdated}"
+
+                    Snackbar.make(
+                        findViewById(android.R.id.content),
+                        message,
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }.onFailure { error ->
+                    Snackbar.make(
+                        findViewById(android.R.id.content),
+                        "Ошибка: ${error.message}",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                snackbar.dismiss()
+                Snackbar.make(
+                    findViewById(android.R.id.content),
+                    "Ошибка: ${e.message}",
+                    Snackbar.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+
 
     override fun onSupportNavigateUp(): Boolean {
         return navController.navigateUp() || super.onSupportNavigateUp()
@@ -310,14 +380,10 @@ class MainActivity : AppCompatActivity() {
 РАЗМЕР: 8.0K
 ================================================================================
 
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -337,6 +403,14 @@ class BookshelfAdapter(
     private val onBookClick: (Book) -> Unit,
     private val onBookLongClick: (Book) -> Unit,
 ) : ListAdapter<Book, BookshelfAdapter.ViewHolder>(BookListDiff()) {
+
+    private var onEditBookClick: ((Book) -> Unit)? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var hideRunnable: Runnable? = null
+
+    fun setOnEditBookClick(listener: (Book) -> Unit) {
+        onEditBookClick = listener
+    }
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -385,13 +459,54 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
-            binding.root.singleClick {
-                onBookClick(book)
-            }
+            // Скрываем overlay по умолчанию
+            binding.actionOverlay.visibility = View.GONE
+
+            // Обработка долгого нажатия - показываем overlay
             binding.root.setOnLongClickListener {
-                onBookLongClick(book)
+                showOverlay(book)
                 true
             }
+
+            // Клик по карточке - открыть книгу (только если overlay не виден)
+            binding.root.setOnClickListener {
+                if (binding.actionOverlay.visibility == View.VISIBLE) {
+                    hideOverlay()
+                } else {
+                    onBookClick(book)
+                }
+            }
+
+            // Кнопка редактирования
+            binding.btnEdit.setOnClickListener {
+                hideOverlay()
+                onEditBookClick?.invoke(book)
+            }
+
+            // Кнопка удаления
+            binding.btnDelete.setOnClickListener {
+                hideOverlay()
+                onBookLongClick(book)
+            }
+        }
+
+        private fun showOverlay(book: Book) {
+            // Скрываем предыдущий таймер
+            hideRunnable?.let { handler.removeCallbacks(it) }
+
+            // Показываем overlay
+            binding.actionOverlay.visibility = View.VISIBLE
+
+            // Автоматически скрываем через 3 секунды
+            hideRunnable = Runnable {
+                hideOverlay()
+            }
+            handler.postDelayed(hideRunnable!!, 3000)
+        }
+
+        private fun hideOverlay() {
+            binding.actionOverlay.visibility = View.GONE
+            hideRunnable?.let { handler.removeCallbacks(it) }
         }
 
         private fun formatReadingTime(seconds: Long): String {
@@ -463,6 +578,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.toUrl
@@ -470,6 +586,7 @@ import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.reader.OpeningError
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.EventChannel
+import timber.log.Timber
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -478,6 +595,19 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
 
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
+
+    fun updateBookMetadata(bookId: Long, title: String, author: String?) {
+        viewModelScope.launch {
+            try {
+                app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
+                // Обновляем список книг - refresh
+                app.bookRepository.books().firstOrNull()
+                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
+            } catch (e: Exception) {
+                android.util.Log.e("BookshelfViewModel", "Failed to update book metadata", e)
+            }
+        }
+    }
 
     fun deletePublication(book: Book) =
         viewModelScope.launch {
@@ -496,6 +626,8 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         app.bookshelf.addPublicationFromWeb(url)
     }
 
+
+
     fun openPublication(
         bookId: Long,
     ) {
@@ -512,6 +644,8 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+
+
     sealed class Event {
 
         class OpenPublicationError(
@@ -524,6 +658,119 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
     }
 }
 
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/EditBookDialogFragment.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.bookshelf
+
+import android.app.Dialog
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.LayoutInflater
+import android.widget.Button
+import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.activityViewModels
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.Book
+
+class EditBookDialogFragment : DialogFragment() {
+
+    private val bookshelfViewModel: BookshelfViewModel by activityViewModels()
+
+    private lateinit var book: Book
+    private lateinit var titleInput: TextInputEditText
+    private lateinit var authorInput: TextInputEditText
+    private lateinit var titleLayout: TextInputLayout
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        arguments?.let {
+            book = it.getSerializable(ARG_BOOK) as Book
+        }
+    }
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val inflater = LayoutInflater.from(context)
+        val view = inflater.inflate(R.layout.dialog_edit_book, null)
+
+        // Находим views
+        val titleTextInputLayout = view.findViewById<TextInputLayout>(R.id.title_text_input_layout)
+        titleLayout = titleTextInputLayout
+        titleInput = view.findViewById(R.id.edit_title)
+        authorInput = view.findViewById(R.id.edit_author)
+
+        // Заполняем текущими значениями
+        titleInput.setText(book.title ?: "")
+        authorInput.setText(book.author ?: "")
+
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Редактирование книги")
+            .setView(view)
+            .setNegativeButton("Отмена") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setPositiveButton("Сохранить") { dialog, _ ->
+                saveChanges()
+            }
+            .create()
+
+        // Настраиваем валидацию после создания диалога
+        dialog.setOnShowListener {
+            val positiveButton = (dialog as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
+            positiveButton.isEnabled = !titleInput.text.isNullOrBlank()
+
+            titleInput.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    val isValid = !s.isNullOrBlank()
+                    positiveButton.isEnabled = isValid
+                    if (isValid) {
+                        titleLayout.error = null
+                    } else {
+                        titleLayout.error = "Название не может быть пустым"
+                    }
+                }
+            })
+        }
+
+        return dialog
+    }
+
+    private fun saveChanges() {
+        val newTitle = titleInput.text?.toString()?.trim()
+        if (newTitle.isNullOrEmpty()) {
+            titleLayout.error = "Название не может быть пустым"
+            return
+        }
+
+        val newAuthor = authorInput.text?.toString()?.trim()
+
+        bookshelfViewModel.updateBookMetadata(book.id!!, newTitle, newAuthor)
+        dismiss()
+    }
+
+    companion object {
+        private const val ARG_BOOK = "book"
+
+        fun newInstance(book: Book): EditBookDialogFragment {
+            val fragment = EditBookDialogFragment()
+            val args = Bundle()
+            args.putSerializable(ARG_BOOK, book)
+            fragment.arguments = args
+            return fragment
+        }
+    }
+}
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/BookshelfFragment.kt
@@ -591,6 +838,11 @@ class BookshelfFragment : Fragment() {
     private val app: Application
         get() = requireContext().applicationContext as Application
 
+    fun showEditBookDialog(book: Book) {
+        val dialog = EditBookDialogFragment.newInstance(book)
+        dialog.show(childFragmentManager, "EditBookDialog")
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -615,6 +867,13 @@ class BookshelfFragment : Fragment() {
             },
             onBookLongClick = { book -> confirmDeleteBook(book) }
         )
+        bookshelfAdapter.setOnEditBookClick { book ->
+            showEditBookDialog(book)
+        }
+
+        bookshelfAdapter.setOnEditBookClick { book ->
+            showEditBookDialog(book)
+        }
 
         appStoragePickerLauncher =
             registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -1953,6 +2212,7 @@ import org.readium.r2.testapp.utils.padSystemUi
 import org.readium.r2.testapp.utils.showSystemUi
 import org.readium.r2.testapp.utils.toggleSystemUi
 import org.readium.r2.testapp.utils.viewLifecycle
+import timber.log.Timber
 
 /*
  * Base reader fragment class
@@ -2080,18 +2340,16 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 navigator.currentLocator
-                    .onEach { model.saveProgression(it) }
+                    .filterNotNull()
+                    .onEach { locator ->
+                        model.saveProgression(locator)
+
+                        // Обновляем отображение текущей страницы
+                        val position = locator.locations.position ?: 1
+                        binding.currentPageText?.text = "Стр. $position / ${model.totalPositions}"
+                    }
                     .launchIn(this)
             }
-        }
-
-        (navigator as? DecorableNavigator)
-            ?.addDecorationListener("highlights", decorationListener)
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            setupHighlights(viewLifecycleOwner.lifecycleScope)
-            setupSearch(viewLifecycleOwner.lifecycleScope)
-            setupTts()
         }
     }
 
@@ -4824,7 +5082,7 @@ class EpubReaderFragment : VisualReaderFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // Display page number labels if the book contains a `page-list` navigation document.
-               // (navigator as? DecorableNavigator)?.applyPageNumberDecorations()
+                (navigator as? DecorableNavigator)?.applyPageNumberDecorations()
             }
         }
 
@@ -5440,7 +5698,7 @@ class ReaderRepository(
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/reader/ReaderViewModel.kt
 ТИП: KOTLIN
-РАЗМЕР: 20K
+РАЗМЕР: 24K
 ================================================================================
 
 /*
@@ -5462,10 +5720,10 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import java.time.LocalDate
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.HyperlinkNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -5488,6 +5746,7 @@ import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.domain.toUserError
 import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.reader.tts.TtsViewModel
@@ -5503,6 +5762,8 @@ class ReaderViewModel(
     private val bookId: Long,
     private val readerRepository: ReaderRepository,
     private val bookRepository: BookRepository,
+    private var maxReachedPage: Int = 0
+
 ) : ViewModel(),
     EpubNavigatorFragment.Listener,
     ImageNavigatorFragment.Listener,
@@ -5550,11 +5811,19 @@ class ReaderViewModel(
     val readingTime: StateFlow<Long> = readingTimer.elapsedSeconds
 
     /**
-     * Текущая позиция для подсчета страниц
+     * Текущий локатор (обновляется из навигатора при каждом изменении)
+     */
+    private val _currentLocator = MutableStateFlow<Locator?>(null)
+    val currentLocator: StateFlow<Locator?> = _currentLocator.asStateFlow()
+
+    /**
+     * Сохраненные значения для вычисления инкрементальных изменений
      */
     private var lastSavedPosition: Locator? = null
     private var lastSavedPage: Int = 0
-    private var totalPositions: Int = 0
+    private var lastSavedTime: Long = 0
+    private var _totalPositions: Int = 0
+    val totalPositions: Int get() = _totalPositions
 
     /**
      * Загрузка сохраненной статистики при инициализации
@@ -5564,13 +5833,12 @@ class ReaderViewModel(
             bookRepository.get(bookId)?.let { book ->
                 readingTimer.setTime(book.readingTime)
                 lastSavedPage = book.pagesRead
+                maxReachedPage = book.pagesRead  // Загружаем максимальную страницу
                 Timber.d("Loaded stats for book $bookId: time=${book.readingTime}s, pages=${book.pagesRead}")
             }
 
-            // Предварительно загружаем общее количество позиций для расчета страниц
-            // Используем runBlocking для синхронного выполнения
-            totalPositions = runBlocking { publication.positions().size }
-            Timber.d("Total positions for book $bookId: $totalPositions")
+            _totalPositions = publication.positions().size
+            Timber.d("Total positions for book $bookId: $_totalPositions")
         }
     }
 
@@ -5587,45 +5855,27 @@ class ReaderViewModel(
      */
     fun pauseReadingTimer() {
         readingTimer.pause()
-        Timber.d("Reading timer paused for book $bookId")
-
-        // Сохраняем статистику при паузе
+        Timber.d("Reading timer paused")
         viewModelScope.launch {
-            saveReadingStats()
+            saveReadingStats(updateTime = true)
         }
     }
 
     /**
-     * Сохраняет текущую статистику чтения в базу данных
+     * Обновляет текущий локатор из навигатора
      */
-    private suspend fun saveReadingStats() {
-        // Получаем текущий локатор из readerInitData (если есть)
-        val currentLocator = getCurrentLocator()
-
-        val currentPage = calculateCurrentPage(currentLocator)
-
-        // Обновляем страницы только если они увеличились
-        val newPagesRead = maxOf(lastSavedPage, currentPage)
-
-        if (newPagesRead != lastSavedPage) {
-            lastSavedPage = newPagesRead
-            Timber.d("Pages updated: $lastSavedPage")
-        }
-
-        // Сохраняем статистику
-        bookRepository.updateReadingStats(
-            bookId = bookId,
-            readingTime = readingTimer.elapsedSeconds.value,
-            pagesRead = newPagesRead,
-            locator = currentLocator
-        )
+    fun updateCurrentLocator(locator: Locator) {
+        _currentLocator.value = locator
     }
 
     /**
-     * Получает текущий локатор из readerInitData
+     * Получает текущий локатор (из навигатора или fallback)
      */
     private fun getCurrentLocator(): Locator {
-        // Пытаемся получить локатор из readerInitData
+        // Сначала пытаемся получить актуальный локатор из навигатора
+        _currentLocator.value?.let { return it }
+
+        // Fallback: используем initialLocation
         return when (val data = readerInitData) {
             is VisualReaderInitData -> data.initialLocation
             is MediaReaderInitData -> null
@@ -5638,15 +5888,74 @@ class ReaderViewModel(
      */
     private fun calculateCurrentPage(locator: Locator): Int {
         val position = locator.locations.position ?: 1
+        return position.coerceAtLeast(1)
+    }
 
-        // Если у нас нет общего количества позиций, пробуем получить снова
-        if (totalPositions == 0) {
-            totalPositions = runBlocking { publication.positions().size }
+    /**
+     * Сохраняет текущую статистику чтения в базу данных
+     */
+    private suspend fun saveReadingStats() {
+        val currentLocator = getCurrentLocator()
+        val currentPage = calculateCurrentPage(currentLocator)
+        val currentTime = readingTimer.elapsedSeconds.value
+
+        // Обновляем максимальную достигнутую страницу
+        if (currentPage > maxReachedPage) {
+            maxReachedPage = currentPage
         }
 
-        // Возвращаем текущую позицию, но не больше общего количества
-        return position.coerceAtMost(totalPositions).coerceAtLeast(1)
+        // Для отображения на обложке используем МАКСИМАЛЬНУЮ страницу
+        val displayPage = maxReachedPage
+
+        val today = LocalDate.now()
+
+        // Получаем существующую статистику за сегодня
+        val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
+        val todayStat = existingStats.find { it.date == today }
+
+        // Вычисляем инкрементальные значения на основе МАКСИМАЛЬНОЙ страницы
+        val incrementalPages = if (lastSavedPage > 0) {
+            maxOf(0, displayPage - lastSavedPage)
+        } else {
+            displayPage
+        }
+
+        val incrementalHours = if (lastSavedTime > 0) {
+            maxOf(0.0, (currentTime - lastSavedTime) / 3600.0)
+        } else {
+            currentTime / 3600.0
+        }
+
+        // Если есть изменения, сохраняем
+        if (incrementalPages > 0 || incrementalHours > 0) {
+            // Сохраняем ежедневную статистику
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
+                hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
+            )
+            bookRepository.saveReadingStat(readingStat)
+
+            // Обновляем агрегированные значения в книге
+            val totalPages = bookRepository.getTotalPagesRead(bookId)
+            val totalHours = bookRepository.getTotalHoursRead(bookId)
+
+            bookRepository.updateReadingStats(
+                bookId = bookId,
+                readingTime = (totalHours * 3600).toLong(),
+                pagesRead = totalPages,
+                locator = currentLocator
+            )
+
+            Timber.d("Saved stats - Current page: $currentPage, Max page: $maxReachedPage, Display page: $displayPage, Increment: +$incrementalPages")
+        }
+
+        // Обновляем сохраненные значения
+        lastSavedPage = displayPage
+        lastSavedTime = currentTime
     }
+
 
     /**
      * Получает отформатированное время чтения для отображения
@@ -5658,7 +5967,7 @@ class ReaderViewModel(
     /**
      * Получает текущий прогресс чтения в процентах
      */
-    fun getReadingProgress(): Float {
+    suspend fun getReadingProgress(): Float {
         val currentLocator = getCurrentLocator()
         val currentPage = calculateCurrentPage(currentLocator)
         return if (totalPositions > 0) {
@@ -5668,24 +5977,95 @@ class ReaderViewModel(
         }
     }
 
-    // ===== КОНЕЦ НОВОГО КОДА =====
+    // ===== СОХРАНЕНИЕ ПРОГРЕССА =====
 
-    override fun onCleared() {
-        // Сохраняем статистику перед закрытием ViewModel
-        viewModelScope.launch {
-            saveReadingStats()
-        }
-        readingTimer.pause()
-        readerRepository.close(bookId)
-    }
-
+    /**
+     * Сохраняет прогресс (вызывается при каждом перелистывании)
+     * Сохраняет только позицию, НЕ время
+     */
     fun saveProgression(locator: Locator) = viewModelScope.launch {
         Timber.v("Saving locator for book $bookId: $locator.")
+        updateCurrentLocator(locator)
         bookRepository.saveProgression(locator, bookId)
 
-        // Сохраняем статистику при каждом изменении позиции
-        saveReadingStats()
+        // Сохраняем ТОЛЬКО страницы, время не трогаем
+        saveReadingStats(updateTime = false)
     }
+
+    /**
+     * Сохраняет полную статистику (вызывается при паузе/закрытии)
+     */
+    private suspend fun saveFullStats() {
+        saveReadingStats(updateTime = true)
+    }
+
+    /**
+     * Сохраняет статистику
+     * @param updateTime - если true, обновляет время; если false - только страницы
+     */
+    private suspend fun saveReadingStats(updateTime: Boolean = true) {
+        val currentLocator = getCurrentLocator()
+        val currentPage = calculateCurrentPage(currentLocator)
+
+        // Обновляем максимальную достигнутую страницу
+        if (currentPage > maxReachedPage) {
+            maxReachedPage = currentPage
+        }
+
+        val displayPage = maxReachedPage
+
+        // Время обновляем только если нужно
+        val currentTime = if (updateTime) readingTimer.elapsedSeconds.value else lastSavedTime
+
+        val today = LocalDate.now()
+        val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
+        val todayStat = existingStats.find { it.date == today }
+
+        // Вычисляем добавленные страницы
+        val incrementalPages = if (displayPage > lastSavedPage) {
+            displayPage - lastSavedPage
+        } else {
+            0
+        }
+
+        // Вычисляем добавленное время (только если updateTime = true)
+        val incrementalHours = if (updateTime && lastSavedTime > 0 && currentTime > lastSavedTime) {
+            (currentTime - lastSavedTime) / 3600.0
+        } else if (updateTime && lastSavedTime == 0L) {
+            currentTime / 3600.0
+        } else {
+            0.0
+        }
+
+        if (incrementalPages > 0 || incrementalHours > 0) {
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
+                hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
+            )
+            bookRepository.saveReadingStat(readingStat)
+
+            val totalPages = bookRepository.getTotalPagesRead(bookId)
+            val totalHours = bookRepository.getTotalHoursRead(bookId)
+
+            bookRepository.updateReadingStats(
+                bookId = bookId,
+                readingTime = (totalHours * 3600).toLong(),
+                pagesRead = totalPages,
+                locator = currentLocator
+            )
+
+            Timber.d("Saved stats - Pages: +$incrementalPages, Hours: +$incrementalHours")
+        }
+
+        lastSavedPage = displayPage
+        if (updateTime) {
+            lastSavedTime = currentTime
+        }
+    }
+
+    // ===== ЗАКЛАДКИ =====
 
     fun getBookmarks() = bookRepository.bookmarksForBook(bookId)
 
@@ -5702,7 +6082,7 @@ class ReaderViewModel(
         bookRepository.deleteBookmark(id)
     }
 
-    // Highlights
+    // ===== ВЫДЕЛЕНИЯ (HIGHLIGHTS) =====
 
     val highlights: Flow<List<Highlight>> by lazy {
         bookRepository.highlightsForBook(bookId)
@@ -5737,8 +6117,6 @@ class ReaderViewModel(
             locator = locator,
             style = style,
             extras = mapOf(
-                // We store the highlight's database ID in the extras map, for easy retrieval
-                // later. You can store arbitrary information in the map.
                 "id" to id
             )
         )
@@ -5792,7 +6170,7 @@ class ReaderViewModel(
         bookRepository.deleteHighlight(id)
     }
 
-    // Search
+    // ===== ПОИСК =====
 
     fun search(query: String) = viewModelScope.launch {
         if (query == lastSearchQuery) return@launch
@@ -5847,7 +6225,7 @@ class ReaderViewModel(
         SearchPagingSource(listener = PagingSourceListener())
     }
 
-    // Navigator.Listener
+    // ===== NAVIGATOR LISTENER =====
 
     override fun onResourceLoadFailed(href: Url, error: ReadError) {
         activityChannel.send(
@@ -5880,7 +6258,7 @@ class ReaderViewModel(
             else -> true
         }
 
-    // Search
+    // ===== SEARCH PAGING SOURCE =====
 
     inner class PagingSourceListener : SearchPagingSource.Listener {
         override suspend fun next(): SearchTry<LocatorCollection?> {
@@ -5895,7 +6273,17 @@ class ReaderViewModel(
         Pager(PagingConfig(pageSize = 20), pagingSourceFactory = pagingSourceFactory)
             .flow.cachedIn(viewModelScope)
 
-    // Events
+    // ===== ON CLEARED =====
+
+    override fun onCleared() {
+        viewModelScope.launch {
+            saveReadingStats(updateTime = true)
+        }
+        readingTimer.pause()
+        readerRepository.close(bookId)
+    }
+
+    // ===== EVENTS =====
 
     sealed class ActivityCommand {
         object OpenOutlineRequested : ActivityCommand()
@@ -6322,12 +6710,8 @@ open class ReaderActivity : AppCompatActivity() {
         return model.getFormattedReadingTime()
     }
 
-    /**
-     * Возвращает прогресс чтения в процентах
-     */
-    fun getReadingProgress(): Float {
-        return model.getReadingProgress()
-    }
+
+
 
     // ===== КОНЕЦ НОВЫХ МЕТОДОВ =====
 
@@ -9574,6 +9958,7 @@ import org.readium.r2.testapp.domain.Bookshelf
 import org.readium.r2.testapp.domain.CoverStorage
 import org.readium.r2.testapp.domain.PublicationRetriever
 import org.readium.r2.testapp.reader.ReaderRepository
+import org.readium.r2.testapp.sync.SyncManager
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 
@@ -9591,6 +9976,9 @@ class Application : android.app.Application() {
         private set
 
     lateinit var readerRepository: ReaderRepository
+        private set
+
+    lateinit var syncManager: SyncManager
         private set
 
     private val coroutineScope: CoroutineScope =
@@ -9647,6 +10035,8 @@ class Application : android.app.Application() {
             bookRepository,
             navigatorPreferences
         )
+
+        syncManager = SyncManager(this, bookRepository)
     }
 
     private fun computeStorageDir(): File {
@@ -9698,16 +10088,37 @@ class Application : android.app.Application() {
 
 
 ================================================================================
-ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/AppDatabase.kt
+ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/Converters.kt
 ТИП: KOTLIN
 РАЗМЕР: 4.0K
 ================================================================================
 
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
+package org.readium.r2.testapp.data.db
+
+import androidx.room.TypeConverter
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+class Converters {
+
+    private val formatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+    @TypeConverter
+    fun fromLocalDate(date: LocalDate?): String? {
+        return date?.format(formatter)
+    }
+
+    @TypeConverter
+    fun toLocalDate(dateString: String?): LocalDate? {
+        return dateString?.let { LocalDate.parse(it, formatter) }
+    }
+}
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/AppDatabase.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
 
 package org.readium.r2.testapp.data.db
 
@@ -9719,23 +10130,22 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import org.readium.r2.testapp.data.model.*
-import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.data.model.Bookmark
-import org.readium.r2.testapp.data.model.Catalog
-import org.readium.r2.testapp.data.model.Highlight
 
 @Database(
-    entities = [Book::class, Bookmark::class, Highlight::class, Catalog::class],
-    version = 2, // Увеличиваем версию
+    entities = [
+        Book::class,
+        Bookmark::class,
+        Highlight::class,
+        Catalog::class,
+        ReadingStat::class
+    ],
+    version = 3,
     exportSchema = false
 )
-@TypeConverters(
-    HighlightConverters::class
-)
+@TypeConverters(HighlightConverters::class, Converters::class)  // Добавляем Converters
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun booksDao(): BooksDao
-
     abstract fun catalogDao(): CatalogDao
 
     companion object {
@@ -9743,30 +10153,47 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
-            val tempInstance = INSTANCE
-            if (tempInstance != null) {
-                return tempInstance
-            }
-            synchronized(this) {
+            return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "database"
                 )
-                    .addMigrations(MIGRATION_1_2) // Добавляем миграцию
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
-                return instance
+                instance
             }
         }
 
         // Миграция с версии 1 на 2
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Добавляем новые колонки
                 database.execSQL("ALTER TABLE books ADD COLUMN reading_time INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE books ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE books ADD COLUMN last_read_date INTEGER")
+            }
+        }
+
+        // Миграция с версии 2 на 3
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Создаем таблицу reading_stats
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS reading_stats (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        book_id INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        pages_read INTEGER NOT NULL DEFAULT 0,
+                        hours_read REAL NOT NULL DEFAULT 0,
+                        FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
+                        UNIQUE(book_id, date)
+                    )
+                """)
+
+                // Создаем индексы
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_book_id ON reading_stats(book_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(date)")
             }
         }
     }
@@ -9775,10 +10202,8 @@ abstract class AppDatabase : RoomDatabase() {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/BooksDao.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
-
-// File: test-app/src/main/java/org/readium/r2/testapp/data/db/BooksDao.kt
 
 package org.readium.r2.testapp.data.db
 
@@ -9788,9 +10213,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
-import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.data.model.Bookmark
-import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.*
+
 
 @Dao
 interface BooksDao {
@@ -9804,10 +10228,12 @@ interface BooksDao {
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.ID + " = :id")
     suspend fun get(id: Long): Book?
 
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IDENTIFIER + " = :identifier")
+    suspend fun getBookByIdentifier(identifier: String): Book?
+
     @Query("SELECT * FROM " + Book.TABLE_NAME + " ORDER BY " + Book.CREATION_DATE + " desc")
     fun getAllBooks(): Flow<List<Book>>
 
-    // Обновление статистики чтения
     @Update
     suspend fun updateBook(book: Book)
 
@@ -9833,10 +10259,11 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
-    // Остальные методы...
+    // Методы для работы с закладками
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
 
+    // Методы для работы с подсветками
     @Query(
         "SELECT * FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.BOOK_ID} = :bookId ORDER BY ${Highlight.TOTAL_PROGRESSION} ASC"
     )
@@ -9866,6 +10293,25 @@ interface BooksDao {
 
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
+
+    // Методы для работы со статистикой чтения - используем String для даты
+    @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
+    fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReadingStat(stat: ReadingStat)
+
+    @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
+    suspend fun deleteReadingStat(bookId: Long, date: String)  // Используем String вместо LocalDate
+
+    @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
+    suspend fun getTotalPagesRead(bookId: Long): Int?
+
+    @Query("SELECT SUM(hours_read) FROM reading_stats WHERE book_id = :bookId")
+    suspend fun getTotalHoursRead(bookId: Long): Double?
+
+    @Query("UPDATE books SET title = :title, author = :author WHERE id = :bookId")
+    suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?)
 }
 
 ================================================================================
@@ -9967,6 +10413,7 @@ package org.readium.r2.testapp.data
 
 import androidx.annotation.ColorInt
 import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
@@ -9978,6 +10425,7 @@ import org.readium.r2.testapp.data.db.BooksDao
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.data.model.Bookmark
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 
 class BookRepository(
@@ -10035,6 +10483,12 @@ class BookRepository(
     suspend fun highlightById(id: Long): Highlight? =
         booksDao.getHighlightById(id)
 
+    suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?) {
+        booksDao.updateBookTitleAndAuthor(bookId, title, author)
+    }
+
+
+
     fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
         booksDao.getHighlightsForBook(bookId)
 
@@ -10067,8 +10521,8 @@ class BookRepository(
             creation = DateTime().toDate().time,
             title = publication.metadata.title ?: url.filename,
             author = publication.metadata.authorName,
+            identifier = publication.metadata.identifier, // Добавляем identifier
             href = url.toString(),
-            identifier = publication.metadata.identifier ?: "",
             mediaType = mediaType,
             progression = "{}",
             cover = cover.path,
@@ -10079,8 +10533,28 @@ class BookRepository(
         return booksDao.insertBook(book)
     }
 
+    fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
+        booksDao.getReadingStatsForBook(bookId)
+
+    suspend fun saveReadingStat(stat: ReadingStat) {
+        booksDao.insertReadingStat(stat)
+    }
+
+    suspend fun deleteReadingStat(bookId: Long, date: LocalDate) {
+        // Конвертируем LocalDate в строку для запроса
+        booksDao.deleteReadingStat(bookId, date.toString())
+    }
+
+    suspend fun getTotalPagesRead(bookId: Long): Int =
+        booksDao.getTotalPagesRead(bookId) ?: 0
+
+    suspend fun getTotalHoursRead(bookId: Long): Double =
+        booksDao.getTotalHoursRead(bookId) ?: 0.0
+
     suspend fun deleteBook(id: Long) =
         booksDao.deleteBook(id)
+
+
 }
 
 ================================================================================
@@ -10126,6 +10600,53 @@ data class Catalog(
     }
 }
 
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/data/model/ReadingStat.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.data.model
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import java.time.LocalDate
+
+@Entity(
+    tableName = "reading_stats",
+    foreignKeys = [
+        ForeignKey(
+            entity = Book::class,
+            parentColumns = ["id"],
+            childColumns = ["book_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["book_id", "date"], unique = true)
+    ]
+)
+data class ReadingStat(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    val id: Long = 0,
+
+    @ColumnInfo(name = "book_id")
+    val bookId: Long,
+
+    @ColumnInfo(name = "date")
+    val date: LocalDate,  // LocalDate будет автоматически конвертироваться через TypeConverter
+
+    @ColumnInfo(name = "pages_read", defaultValue = "0")
+    val pagesRead: Int = 0,
+
+    @ColumnInfo(name = "hours_read", defaultValue = "0")
+    val hoursRead: Double = 0.0
+)
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/model/Bookmark.kt
@@ -10373,8 +10894,6 @@ class HighlightConverters {
 РАЗМЕР: 4.0K
 ================================================================================
 
-// File: test-app/src/main/java/org/readium/r2/testapp/data/model/Book.kt
-
 package org.readium.r2.testapp.data.model
 
 import androidx.room.ColumnInfo
@@ -10382,6 +10901,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.mediatype.MediaType
+import java.io.Serializable
 
 @Entity(tableName = Book.TABLE_NAME)
 data class Book(
@@ -10397,29 +10917,27 @@ data class Book(
     @ColumnInfo(name = AUTHOR)
     val author: String? = null,
     @ColumnInfo(name = IDENTIFIER)
-    val identifier: String,
+    val identifier: String? = null,
     @ColumnInfo(name = PROGRESSION)
     val progression: String? = null,
     @ColumnInfo(name = MEDIA_TYPE)
     val rawMediaType: String,
     @ColumnInfo(name = COVER)
     val cover: String,
-    // Новые поля
     @ColumnInfo(name = READING_TIME, defaultValue = "0")
-    var readingTime: Long = 0, // Время чтения в секундах
+    var readingTime: Long = 0,
     @ColumnInfo(name = PAGES_READ, defaultValue = "0")
-    var pagesRead: Int = 0, // Количество прочитанных страниц
+    var pagesRead: Int = 0,
     @ColumnInfo(name = LAST_READ_DATE)
-    var lastReadDate: Long? = null // Дата последнего открытия
-) {
-
+    var lastReadDate: Long? = null
+) : Serializable {
     constructor(
         id: Long? = null,
         creation: Long? = null,
         href: String,
         title: String?,
         author: String? = null,
-        identifier: String,
+        identifier: String? = null,
         progression: String? = null,
         mediaType: MediaType,
         cover: String,
@@ -10443,11 +10961,9 @@ data class Book(
 
     val url: AbsoluteUrl get() = AbsoluteUrl(href)!!
 
-    val mediaType: MediaType get() =
-        MediaType(rawMediaType)!!
+    val mediaType: MediaType get() = MediaType(rawMediaType)!!
 
     companion object {
-
         const val TABLE_NAME = "books"
         const val ID = "id"
         const val CREATION_DATE = "creation_date"
@@ -10461,6 +10977,278 @@ data class Book(
         const val READING_TIME = "reading_time"
         const val PAGES_READ = "pages_read"
         const val LAST_READ_DATE = "last_read_date"
+    }
+}
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/SyncBookDTO.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.sync
+
+import com.google.gson.annotations.SerializedName
+import java.time.LocalDate
+
+data class SyncBookDTO(
+    @SerializedName("identifier")
+    val identifier: String,
+
+    @SerializedName("title")
+    val title: String,
+
+    @SerializedName("author")
+    val author: String? = null,
+
+    @SerializedName("totalPages")
+    val totalPages: Int? = null,
+
+    @SerializedName("language")
+    val language: String? = null,
+
+    @SerializedName("categoryId")
+    val categoryId: Long? = null,
+
+    @SerializedName("readingStats")
+    val readingStats: List<SyncReadingStatDTO> = emptyList()
+)
+
+data class SyncReadingStatDTO(
+    @SerializedName("date")
+    val date: String,  // Используем String для даты в формате ISO
+
+    @SerializedName("pagesRead")
+    val pagesRead: Int,
+
+    @SerializedName("hoursRead")
+    val hoursRead: Double
+)
+
+data class SyncRequestDTO(
+    @SerializedName("username")
+    val username: String,
+
+    @SerializedName("books")
+    val books: List<SyncBookDTO>
+)
+
+data class SyncResponseDTO(
+    @SerializedName("success")
+    val success: Boolean,
+
+    @SerializedName("booksCreated")
+    val booksCreated: Int,
+
+    @SerializedName("booksUpdated")
+    val booksUpdated: Int,
+
+    @SerializedName("statsCreated")
+    val statsCreated: Int,
+
+    @SerializedName("statsUpdated")
+    val statsUpdated: Int,
+
+    @SerializedName("message")
+    val message: String,
+
+    @SerializedName("error")
+    val error: String? = null
+)
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/SyncManager.kt
+ТИП: KOTLIN
+РАЗМЕР: 8.0K
+================================================================================
+
+package org.readium.r2.testapp.sync
+
+import android.content.Context
+import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import org.readium.r2.testapp.Application
+import org.readium.r2.testapp.data.BookRepository
+import org.readium.r2.testapp.data.model.Book
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.*
+import java.util.concurrent.TimeUnit
+
+interface SyncApi {
+    @POST("/api/sync")
+    suspend fun syncData(@Body request: SyncRequestDTO): SyncResponseDTO
+
+    @GET("/api/sync/test")
+    suspend fun testConnection(): Map<String, String>
+}
+
+class SyncManager(
+    private val context: Context,
+    private val bookRepository: BookRepository
+) {
+    companion object {
+        private const val TAG = "SyncManager"
+        private const val BASE_URL = "https://my-pkms.ru"
+        private const val CONNECTION_TIMEOUT = 30L
+    }
+
+    private val gson: Gson = GsonBuilder()
+        .setPrettyPrinting()
+        .create()
+
+    private val api: SyncApi by lazy {
+        val loggingInterceptor = HttpLoggingInterceptor { message ->
+            Log.d(TAG, message)
+        }.apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+
+        val client = OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+            .readTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+            .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
+            .build()
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        retrofit.create(SyncApi::class.java)
+    }
+
+    suspend fun testConnection(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Testing connection to $BASE_URL")
+            val response = api.testConnection()
+            Log.d(TAG, "Connection test successful: $response")
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Connection test failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun syncAllBooks(username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting sync for user: $username")
+
+            val books = bookRepository.books().first()
+            Log.d(TAG, "Found ${books.size} books to sync")
+
+            if (books.isEmpty()) {
+                return@withContext Result.success(
+                    SyncResponseDTO(
+                        success = true,
+                        booksCreated = 0,
+                        booksUpdated = 0,
+                        statsCreated = 0,
+                        statsUpdated = 0,
+                        message = "No books to sync",
+                        error = null
+                    )
+                )
+            }
+
+            val syncBooks = mutableListOf<SyncBookDTO>()
+
+            for (book in books) {
+                try {
+                    val stats = bookRepository.getReadingStatsForBook(book.id!!).first()
+
+                    val syncBook = SyncBookDTO(
+                        identifier = book.identifier ?: generateBookIdentifier(book),
+                        title = book.title ?: "",
+                        author = book.author ?: "",
+                        totalPages = null,
+                        language = null,
+                        categoryId = null,
+                        readingStats = stats.map { stat ->
+                            SyncReadingStatDTO(
+                                date = stat.date.toString(), // Преобразуем LocalDate в строку
+                                pagesRead = stat.pagesRead,
+                                hoursRead = stat.hoursRead
+                            )
+                        }
+                    )
+
+                    syncBooks.add(syncBook)
+                    Log.d(TAG, "Prepared book: ${book.title} with ${stats.size} stats records")
+
+                    // Логируем отправляемые данные для отладки
+                    val bookJson = gson.toJson(syncBook)
+                    Log.d(TAG, "Book JSON: $bookJson")
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error preparing book ${book.title}", e)
+                }
+            }
+
+            val request = SyncRequestDTO(username, syncBooks)
+            val requestJson = gson.toJson(request)
+            Log.d(TAG, "Sending sync request with ${syncBooks.size} books")
+            Log.d(TAG, "Request JSON: $requestJson")
+
+            val response = api.syncData(request)
+            Log.d(TAG, "Sync response: ${gson.toJson(response)}")
+
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun syncBook(bookId: Long, username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
+        try {
+            val book = bookRepository.get(bookId)
+            if (book == null) {
+                return@withContext Result.failure(Exception("Book not found"))
+            }
+
+            val stats = bookRepository.getReadingStatsForBook(bookId).first()
+
+            val syncBook = SyncBookDTO(
+                identifier = book.identifier ?: generateBookIdentifier(book),
+                title = book.title ?: "",
+                author = book.author ?: "",
+                totalPages = null,
+                language = null,
+                categoryId = null,
+                readingStats = stats.map { stat ->
+                    SyncReadingStatDTO(
+                        date = stat.date.toString(),
+                        pagesRead = stat.pagesRead,
+                        hoursRead = stat.hoursRead
+                    )
+                }
+            )
+
+            val request = SyncRequestDTO(username, listOf(syncBook))
+            val response = api.syncData(request)
+
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync book failed", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun generateBookIdentifier(book: Book): String {
+        val title = book.title ?: ""
+        val author = book.author ?: ""
+        val identifier = "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
+        Log.d(TAG, "Generated identifier for '${book.title}': $identifier")
+        return identifier
     }
 }
 
@@ -12806,6 +13594,48 @@ useExternalFileDir=false
 </menu>
 
 ================================================================================
+ФАЙЛ: src/main/res/menu/menu_book_context.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_edit"
+        android:icon="@drawable/ic_baseline_edit_24"
+        android:title=""
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_delete"
+        android:icon="@drawable/ic_baseline_delete_24"
+        android:title=""
+        app:showAsAction="always" />
+
+</menu>
+
+================================================================================
+ФАЙЛ: src/main/res/menu/menu_main.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_sync"
+        android:title="Sync"
+        android:icon="@drawable/ic_baseline_sync_24"
+        app:showAsAction="always" />
+
+</menu>
+
+================================================================================
 ФАЙЛ: src/main/res/values/arrays.xml
 ТИП: XML
 РАЗМЕР: 4.0K
@@ -12855,6 +13685,7 @@ useExternalFileDir=false
 -->
 
 <resources>
+    <string name="app_name">PKMS</string>
     <string name="epubactivity_drm_info">DRM Info</string>
     <string name="epubactivity_set_bookmark">Add a bookmark</string>
     <string name="epubactivity_settings">User Settings</string>
@@ -12871,6 +13702,7 @@ useExternalFileDir=false
     <string name="app_version">2.2.0</string>
     <string name="github_tab_label">GitHub Tag:</string>
     <string name="github_tag">2.2.0</string>
+    <string name="api_base_url">https://my-pkms.ru</string>
 
     <string name="copyright_label">Copyright</string>
     <string name="copyright">\@ 2019 European Digital Reading Lab</string>
@@ -13125,6 +13957,88 @@ useExternalFileDir=false
 
 
 ================================================================================
+ФАЙЛ: src/main/res/drawable/ic_launcher_background.xml
+ТИП: XML
+РАЗМЕР: 8.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<vector
+    android:height="108dp"
+    android:width="108dp"
+    android:viewportHeight="108"
+    android:viewportWidth="108"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <path android:fillColor="#3DDC84"
+          android:pathData="M0,0h108v108h-108z"/>
+    <path android:fillColor="#00000000" android:pathData="M9,0L9,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,0L19,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M29,0L29,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M39,0L39,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M49,0L49,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M59,0L59,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M69,0L69,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M79,0L79,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M89,0L89,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M99,0L99,108"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,9L108,9"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,19L108,19"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,29L108,29"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,39L108,39"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,49L108,49"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,59L108,59"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,69L108,69"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,79L108,79"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,89L108,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M0,99L108,99"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,29L89,29"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,39L89,39"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,49L89,49"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,59L89,59"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,69L89,69"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M19,79L89,79"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M29,19L29,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M39,19L39,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M49,19L49,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M59,19L59,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M69,19L69,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+    <path android:fillColor="#00000000" android:pathData="M79,19L79,89"
+          android:strokeColor="#33FFFFFF" android:strokeWidth="0.8"/>
+</vector>
+
+
+================================================================================
 ФАЙЛ: src/main/res/drawable/baseline_dashboard_24.xml
 ТИП: XML
 РАЗМЕР: 4.0K
@@ -13257,6 +14171,21 @@ useExternalFileDir=false
       android:pathData="M12,11.55C9.64,9.35 6.48,8 3,8v11c3.48,0 6.64,1.35 9,3.55 2.36,-2.19 5.52,-3.55 9,-3.55V8c-3.48,0 -6.64,1.35 -9,3.55zM12,8c1.66,0 3,-1.34 3,-3s-1.34,-3 -3,-3 -3,1.34 -3,3 1.34,3 3,3z"/>
 </vector>
 
+
+================================================================================
+ФАЙЛ: src/main/res/drawable/circle_background.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#80000000" />
+    <size
+        android:width="32dp"
+        android:height="32dp" />
+</shape>
 
 ================================================================================
 ФАЙЛ: src/main/res/drawable/ic_baseline_play_arrow_24.xml
@@ -13441,6 +14370,23 @@ useExternalFileDir=false
 </shape>
 
 ================================================================================
+ФАЙЛ: src/main/res/drawable/ic_baseline_sync_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z"/>
+</vector>
+
+================================================================================
 ФАЙЛ: src/main/res/drawable/ic_baseline_search_24.xml
 ТИП: XML
 РАЗМЕР: 4.0K
@@ -13544,6 +14490,21 @@ useExternalFileDir=false
 
 
 ================================================================================
+ФАЙЛ: src/main/res/drawable/circle_background_white.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FFFFFF" />
+    <size
+        android:width="48dp"
+        android:height="48dp" />
+</shape>
+
+================================================================================
 ФАЙЛ: src/main/res/drawable/ic_add_white_24dp.xml
 ТИП: XML
 РАЗМЕР: 4.0K
@@ -13557,6 +14518,23 @@ useExternalFileDir=false
     <path
         android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
         android:fillColor="#ffffff"/>
+</vector>
+
+================================================================================
+ФАЙЛ: src/main/res/drawable/ic_more_vert_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z"/>
 </vector>
 
 ================================================================================
@@ -13652,30 +14630,27 @@ useExternalFileDir=false
 
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <!--
-        Required with LCP support.
-        The CRL is served from an HTTP server, so we need to explicitly allow clear-text traffic on
-        this domain
-        See https://github.com/readium/r2-lcp-kotlin/issues/59
-        -->
-        <domain includeSubdomains="false">crl.edrlab.telesec.de</domain>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">my-pkms.ru</domain>
 
-        <!-- Publications from Feedbooks' catalog are downloaded through HTTP -->
+        <!-- Настройки для HTTPS -->
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Для локальной разработки (можно оставить) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+
+        <domain includeSubdomains="false">crl.edrlab.telesec.de</domain>
         <domain includeSubdomains="true">feedbooks.com</domain>
         <domain includeSubdomains="true">feedbooks.net</domain>
-
-        <!--
-        Required for the Open Textbooks Catalog OPDS feed to load properly
-        open.minitex.org is for the publications
-        s3.amazonaws.com is for the cover images
-        -->
         <domain includeSubdomains="false">open.minitex.org</domain>
         <domain includeSubdomains="false">s3.amazonaws.com</domain>
-
     </domain-config>
 </network-security-config>
-
 
 ================================================================================
 ФАЙЛ: src/main/res/navigation/navigation.xml
@@ -13809,6 +14784,55 @@ useExternalFileDir=false
         android:autofillHints=""
         android:hint="@string/enter_url"
         android:inputType="textUri" />
+</LinearLayout>
+
+================================================================================
+ФАЙЛ: src/main/res/layout/dialog_edit_book.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/title_text_input_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Название"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/edit_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/author_text_input_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Автор"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/edit_author"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
 </LinearLayout>
 
 ================================================================================
@@ -15133,6 +16157,16 @@ useExternalFileDir=false
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         />
+
+    <TextView
+        android:id="@+id/currentPageText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:padding="16dp"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        android:background="#88000000" />
 </FrameLayout>
 
 
@@ -15570,11 +16604,10 @@ useExternalFileDir=false
 ================================================================================
 ФАЙЛ: src/main/res/layout/item_recycle_book.xml
 ТИП: XML
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
-<!-- File: test-app/src/main/res/layout/item_recycle_book.xml -->
-
+<?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -15583,86 +16616,138 @@ useExternalFileDir=false
     android:layout_height="wrap_content"
     android:layout_margin="5dp">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:orientation="vertical"
-        android:weightSum="4">
+        android:layout_height="match_parent">
 
-        <FrameLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="3"
-            tools:ignore="UselessParent">
+            android:layout_height="200dp"
+            android:orientation="vertical"
+            android:weightSum="4">
 
-            <ImageView
-                android:id="@+id/bookshelf_coverImage"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="@string/cover_image"
-                android:scaleType="centerCrop" />
+                android:layout_height="0dp"
+                android:layout_weight="3"
+                tools:ignore="UselessParent">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="start|bottom"
-                android:background="@android:drawable/screen_background_dark_transparent"
-                android:orientation="vertical"
-                android:padding="8dp">
+                <ImageView
+                    android:id="@+id/bookshelf_coverImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/cover_image"
+                    android:scaleType="centerCrop" />
 
-                <TextView
-                    android:id="@+id/bookshelf_titleText"
+                <!-- Overlay с иконками действий (появляется при долгом нажатии) -->
+                <LinearLayout
+                    android:id="@+id/action_overlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#80000000"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <ImageButton
+                        android:id="@+id/btn_edit"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_margin="8dp"
+                        android:background="@drawable/circle_background_white"
+                        android:src="@drawable/ic_baseline_edit_24"
+                        android:contentDescription="Редактировать"
+                        android:padding="12dp"
+                        app:tint="#333333" />
+
+                    <ImageButton
+                        android:id="@+id/btn_delete"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_margin="8dp"
+                        android:background="@drawable/circle_background_white"
+                        android:src="@drawable/ic_baseline_delete_24"
+                        android:contentDescription="Удалить"
+                        android:padding="12dp"
+                        app:tint="#333333" />
+
+                </LinearLayout>
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:maxLines="2"
-                    android:ellipsize="end" />
+                    android:layout_gravity="start|bottom"
+                    android:background="@android:drawable/screen_background_dark_transparent"
+                    android:orientation="vertical"
+                    android:padding="8dp">
+
+                    <TextView
+                        android:id="@+id/bookshelf_titleText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:maxLines="2"
+                        android:ellipsize="end" />
+                </LinearLayout>
+
+            </FrameLayout>
+
+            <!-- Контейнер для статистики -->
+            <LinearLayout
+                android:id="@+id/readingStatsLayout"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:padding="4dp"
+                android:background="?attr/colorSurfaceVariant"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/readingTimeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    tools:text="⏱️ 1ч 23мин" />
+
+                <TextView
+                    android:id="@+id/pagesReadText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    tools:text="📄 45 стр." />
+
+                <TextView
+                    android:id="@+id/lastReadText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:visibility="gone"
+                    tools:text="🕒 сегодня" />
+
             </LinearLayout>
-
-        </FrameLayout>
-
-        <!-- Контейнер для статистики -->
-        <LinearLayout
-            android:id="@+id/readingStatsLayout"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:padding="4dp"
-            android:background="?attr/colorSurfaceVariant"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/readingTimeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="10sp"
-                android:maxLines="1"
-                tools:text="⏱️ 1ч 23мин" />
-
-            <TextView
-                android:id="@+id/pagesReadText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="10sp"
-                android:maxLines="1"
-                tools:text="📄 45 стр." />
-
-            <TextView
-                android:id="@+id/lastReadText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="10sp"
-                android:maxLines="1"
-                android:visibility="gone"
-                tools:text="🕒 сегодня" />
 
         </LinearLayout>
 
-    </LinearLayout>
+    </FrameLayout>
 
 </androidx.cardview.widget.CardView>
+
+================================================================================
+ФАЙЛ: src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
 
 ================================================================================
 ФАЙЛ: src/main/res/mipmap-anydpi-v26/ic_launcher.xml
@@ -15671,15 +16756,9 @@ useExternalFileDir=false
 ================================================================================
 
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Copyright 2023 Readium Foundation. All rights reserved.
-  Use of this source code is governed by the BSD-style license
-  available in the top-level LICENSE file of the project.
--->
-
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@mipmap/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
 
 ================================================================================
@@ -15729,7 +16808,7 @@ useExternalFileDir=false
 ================================================================================
 ФАЙЛ: build.gradle.kts
 ТИП: GRADLE_KTS
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -15851,15 +16930,23 @@ dependencies {
     // Room database
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
+
+    // Retrofit для работы с API
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Kotlin Coroutines для работы с Retrofit
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 
 
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2364
+Всего файлов в проекте: 2402
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Wed Apr  1 02:58:05 PM +05 2026
+Дата создания отчета: Mon Apr  6 03:35:14 PM +05 2026
 ================================================================================
