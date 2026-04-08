@@ -135,7 +135,7 @@ open class ReaderActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Возобновляем таймер при возврате в активность
         Timber.d("ReaderActivity onResume - starting timer")
-        startReadingTimer()
+        //startReadingTimer()
     }
 
     override fun onPause() {
@@ -144,7 +144,7 @@ open class ReaderActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Приостанавливаем таймер при уходе на задний план
         Timber.d("ReaderActivity onPause - pausing timer")
-        pauseReadingTimer()
+        //pauseReadingTimer()
     }
 
     override fun onStop() {
