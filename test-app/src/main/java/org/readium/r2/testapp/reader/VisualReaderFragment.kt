@@ -45,6 +45,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -195,6 +197,34 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 is ReaderViewModel.VisualFragmentCommand.ShowPopup ->
                     showFootnotePopup(event.text)
             }
+        }
+
+        setupPageTextInsets()
+    }
+
+    private fun setupPageTextInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.currentPageText) { _, insets ->
+            // Получаем все системные панели
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+
+            // Определяем, где находится навигация
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+            val layoutParams = binding.currentPageText.layoutParams as? ViewGroup.MarginLayoutParams
+
+            if (isLandscape && navigationBars.right > 0) {
+                // Горизонтальная ориентация — навигация справа
+                layoutParams?.rightMargin = navigationBars.right + 1
+                layoutParams?.bottomMargin = 0  // обычный отступ снизу
+            } else {
+                // Вертикальная ориентация — навигация снизу
+                layoutParams?.bottomMargin = navigationBars.bottom + 1
+                layoutParams?.rightMargin = 0  // обычный отступ справа
+            }
+
+            binding.currentPageText.layoutParams = layoutParams
+            insets
         }
     }
 
