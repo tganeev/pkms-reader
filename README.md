@@ -1,146 +1,166 @@
-# Readium Kotlin Toolkit
+# 📚 PKMS Reader — Personal Knowledge Management System
 
-[Readium Mobile](https://github.com/readium/mobile) is a toolkit for ebooks, audiobooks and comics written in Swift & Kotlin.
+**PKMS Reader** — это мощное мобильное приложение для чтения электронных книг с интегрированной системой синхронизации статистики чтения и управления личной библиотекой. Приложение построено на базе **Readium SDK** и поддерживает основные форматы электронных книг.
 
-:point_up: **Take a look at the [guide to quickly get started](docs/guides/getting-started.md).** A [Test App](test-app) demonstrates how to integrate the Readium Kotlin toolkit in your own reading app.
+---
 
-:question: **Find documentation and API reference at [readium.org/kotlin-toolkit](https://readium.org/kotlin-toolkit)**.
+## 🚀 Основные возможности
 
-## Features
+### 📖 Чтение книг
+- Поддержка форматов: **EPUB**, **PDF**, **Audiobook**, **CBZ**, **DiViNa**
+- Настройка внешнего вида: темы, размер шрифта, цвета фона, межстрочный интервал
+- Полноэкранный режим чтения с автоматическим скрытием интерфейса
+- Поддержка TTS (Text-to-Speech) для озвучивания книг
 
-✅ Implemented &nbsp;&nbsp;&nbsp;&nbsp; 🚧 Partially implemented  &nbsp;&nbsp;&nbsp;&nbsp; 📆 Planned &nbsp;&nbsp;&nbsp;&nbsp; 👀 Want to do &nbsp;&nbsp;&nbsp;&nbsp; ❓ Not planned
+### 📊 Статистика чтения
+- Автоматический подсчет **прочитанных страниц**
+- Отслеживание **времени чтения** с сохранением по дням
+- Визуальный индикатор прогресса для каждой книги
+- История чтения: сколько страниц и времени прочитано за каждый день
 
-### Formats
+### 📚 Управление библиотекой
+- **Книжная полка** с отображением всех книг
+- **Редактирование метаданных** (название, автор)
+- Импорт книг из **хранилища устройства**, **веб-ссылок** или **OPDS-каталогов**
+- Удаление книг из библиотеки
 
-| Format | Status |
-|---|:---:|
-| EPUB 2 | ✅ |
-| EPUB 3 | ✅ |
-| Readium Web Publication | 🚧 |
-| PDF | ✅ |
-| Readium Audiobook | ✅ |
-| Zipped Audiobook | ✅ |
-| Standalone audio files (MP3, AAC, etc.) | ✅ |
-| Readium Divina | 🚧 |
-| CBZ (Comic Book ZIP) | 🚧 |
-| CBR (Comic Book RAR) | ❓ |
-| [DAISY](https://daisy.org/activities/standards/daisy/) | 👀 |
+### 🔄 Синхронизация с сервером
+- Отправка статистики чтения на удаленный сервер
+- Поддержка синхронизации **по датам** (ежедневная статистика)
+- Ручная синхронизация через кнопку в главном меню
 
-### Features
+### 🎨 Интерфейс
+- Интуитивно понятный интерфейс с **нижней навигацией**
+- **Адаптивный дизайн** для разных размеров экрана
+- **Сворачиваемый индикатор страниц** в правом нижнем углу
+- **Динамические отступы** для корректного отображения на устройствах с вырезом экрана
 
-A number of features are implemented only for some publication formats.
+### ⚙️ Технические особенности
+- **Экран не выключается** во время чтения
+- **Оптимизированное энергопотребление**
+- Поддержка **темной темы**
+- **Кэширование обложек** для быстрой загрузки
 
-| Feature | EPUB (reflow) | EPUB (FXL) | PDF |
-|---|:---:|:---:|:---:|
-| Pagination | ✅ | ✅ | ✅ |
-| Scrolling | ✅ | 👀 | ✅ |
-| Right-to-left (RTL) | ✅ | ✅ |  ✅ |
-| Search in textual content | ✅ | ✅ | 👀 |
-| Highlighting (Decoration API) | ✅ | ✅ | 👀 |
-| Text-to-speech (TTS) | ✅ | ✅ | 👀 |
-| Media overlays | 📆 | 📆 | |
+---
 
-### OPDS Support
+## 🛠 Технологический стек
 
-| Feature | Status |
-|---|:---:|
-| [OPDS Catalog 1.2](https://specs.opds.io/opds-1.2) | ✅ | 
-| [OPDS Catalog 2.0](https://drafts.opds.io/opds-2.0) | ✅ | 
-| [Authentication for OPDS](https://drafts.opds.io/authentication-for-opds-1.0.html) | 📆 |
-| [Readium LCP Automatic Key Retrieval](https://readium.org/lcp-specs/notes/lcp-key-retrieval.html) | 📆 |
+| Компонент | Технология |
+|-----------|------------|
+| **Язык** | Kotlin |
+| **UI** | Jetpack Compose + XML Views |
+| **Чтение книг** | Readium SDK (EPUB, PDF, Audiobook) |
+| **База данных** | Room (SQLite) |
+| **Сеть** | Retrofit + OkHttp |
+| **Асинхронность** | Kotlin Coroutines + Flow |
+| **Навигация** | Jetpack Navigation Component |
+| **Изображения** | Picasso |
+| **Логирование** | Timber |
 
-### DRM Support
+---
 
-| Feature | Status |
-|---|:---:|
-| [Readium LCP](https://www.edrlab.org/projects/readium-lcp/) | ✅ |
-| [Adobe ACS](https://www.adobe.com/fr/solutions/ebook/content-server.html) | ❓ |
+## 📱 Требования к устройству
 
-## User Guides
+- **Android 8.0 (API 26)** и выше
+- **Минимум 100 МБ** свободного места
+- **Интернет-соединение** (для синхронизации и загрузки книг)
 
-Guides are available to help you make the most of the toolkit.
+---
 
-### Publication
+## 🏗 Архитектура приложения
 
-* [Opening a publication](docs/guides/open-publication.md) – parse a publication package (EPUB, PDF, etc.) or manifest (RWPM) into Readium `Publication` models
-* [Extracting the content of a publication](docs/guides/content.md) – API to extract the text content of a publication for searching or indexing it
-* [Supporting PDF documents](docs/guides/pdf.md) – setup the PDF support in the toolkit
-* [Text-to-speech](docs/guides/tts.md) – read aloud the content of a textual publication using speech synthesis
-* [Accessibility](docs/guides/accessibility.md) – inspect and present accessibility metadata to users
+Приложение построено на **MVVM архитектуре** с использованием **Clean Architecture** принципов.
 
-### Navigator
 
-* [Navigator](docs/guides/navigator/navigator.md) - an overview of the Navigator to render a `Publication`'s content to the user
-* [Configuring the Navigator](docs/guides/navigator/preferences.md) – setup and render Navigator user preferences (font size, colors, etc.)
-* [Font families in the EPUB navigator](docs/guides/navigator/epub-fonts.md) – support custom font families with reflowable EPUB publications
-* [Media Navigator](docs/guides/navigator/media-navigator.md) – use the Media Navigator to read aloud a publication (audiobook, TTS, etc.)
+### Основные модули
 
-### DRM
+| Модуль | Назначение |
+|--------|------------|
+| **Reader** | Чтение книг, настройки, TTS, навигация |
+| **Bookshelf** | Книжная полка, импорт, редактирование |
+| **Sync** | Синхронизация с сервером |
+| **Database** | Локальное хранение книг и статистики |
+| **Catalog** | OPDS-каталоги |
 
-* [Supporting Readium LCP](docs/guides/lcp.md) – open and render LCP DRM protected publications
+---
 
-## Setting up the Readium Kotlin toolkit
+## 🔄 Синхронизация данных
 
-### Minimum Requirements
+Приложение отправляет на сервер следующие данные:
+1. Название книги
+2. Автор
+3. Дата
+4. Кол-во прочитанных страниц по датам
+5. Кол-во часов чтение инвестированных в чтение по датам
 
-| Readium   | Android min SDK | Android compile SDK | Kotlin compiler (✻) | Gradle (✻) |
-|-----------|-----------------|---------------------|---------------------|------------|
-| `develop` | 21              | 36                  | 2.1.21              | 8.14.1     |
-| 3.1.0     | 21              | 35                  | 2.1.20              | 8.13       |
-| 3.0.0     | 21              | 34                  | 1.9.24              | 8.6.0      |
-| 2.3.0     | 21              | 33                  | 1.7.10              | 6.9.3      |
 
-✻ Only required if you integrate Readium as a submodule instead of using Maven Central.
+## 🚦 Статус проекта
 
-### Dependencies
+| Компонент | Статус |
+|-----------|--------|
+| Чтение EPUB | ✅ Работает |
+| Чтение PDF | ✅ Работает |
+| Аудиокниги | ✅ Работает |
+| Статистика чтения | ✅ Работает |
+| Синхронизация | ✅ Работает |
+| Редактирование книг | ✅ Работает |
+| OPDS-каталоги | ✅ Работает |
+| TTS | ✅ Работает |
 
-Readium modules are distributed with [Maven Central](https://search.maven.org/search?q=g:org.readium.kotlin-toolkit). Make sure that you have the `$readium_version` property set in your root `build.gradle`, then add the Maven Central repository.
+---
 
-```groovy
-buildscript {
-    ext.readium_version = '3.1.2'
-}
+## 🤝 Вклад в проект
 
-allprojects {
-    repositories {
-        mavenCentral()
-    }
-}
-```
+1. Форкните репозиторий
+2. Создайте ветку для ваших изменений (git checkout -b feature/amazing-feature)
+3. Внесите изменения, следуя код-стайлу проекта
+4. Зафиксируйте изменения с понятным сообщением (git commit -m "feat: add some amazing feature")
+5. Отправьте изменения в ваш форк (git push origin feature/amazing-feature)
+6. Откройте Pull Request и подробно опишите ваши изменения
+7. Дождитесь ревью и внесите правки при необходимости
+     
+   
 
-Then, add the dependencies to the Readium modules you need in your app's `build.gradle`.
+## ⚖️ Лицензия
 
-```groovy
-dependencies {
-    implementation "org.readium.kotlin-toolkit:readium-shared:$readium_version"
-    implementation "org.readium.kotlin-toolkit:readium-streamer:$readium_version"
-    implementation "org.readium.kotlin-toolkit:readium-navigator:$readium_version"
-    implementation "org.readium.kotlin-toolkit:readium-opds:$readium_version"
-    implementation "org.readium.kotlin-toolkit:readium-lcp:$readium_version"
-}
-```
+**PKMS Reader** распространяется под лицензией **BSD 3-Clause License**.
 
-:warning: You must enable [core library desugaring](https://developer.android.com/studio/write/java8-support#library-desugaring) in your application module.
+Отдельные компоненты проекта, включая **Readium SDK**, также используют лицензию BSD 3-Clause. Полный текст лицензии можно найти в файле `LICENSE` в корне репозитория.
 
-#### Using a local Git clone
+### Используемые сторонние библиотеки и их лицензии:
 
-You may prefer to use a local Git clone if you want to contribute to Readium, or if you are using your own fork.
+| Библиотека | Лицензия |
+|------------|----------|
+| Readium SDK | BSD 3-Clause |
+| Kotlin | Apache 2.0 |
+| Jetpack Compose | Apache 2.0 |
+| Room | Apache 2.0 |
+| Retrofit | Apache 2.0 |
+| OkHttp | Apache 2.0 |
+| Picasso | Apache 2.0 |
+| Timber | Apache 2.0 |
 
-First, add the repository as a Git submodule of your app repository, then checkout the desired branch or tag:
+---
 
-```sh
-git submodule add https://github.com/readium/kotlin-toolkit.git
-```
 
-Then, include the Readium build to your project's `settings.gradle` file. The Readium dependencies will automatically build against the local sources.
+## 🙏 Благодарности
 
-```groovy
-// Provide the path to the Git submodule.
-includeBuild 'kotlin-toolkit'
-```
+- **Readium** — за отличный SDK для работы с электронными книгами
+- **Kotlin** — за прекрасный язык программирования
+- **Jetpack** — за качественные библиотеки
 
-:warning: When importing Readium locally, you will need to use the same version of the Android Gradle Plugin in your project.
 
-### Building with Readium LCP
+## 📞 Контакты
 
-Using the toolkit with Readium LCP requires additional dependencies, including the binary `liblcp` provided by EDRLab. [Contact EDRLab](mailto:contact@edrlab.org) to request your private `liblcp` and the setup instructions.
+### Разработчик
+
+| Канал | Информация |
+|-------|------------|
+| **Имя** | Lan Artes |
+| **Email** | [tganeev@mail.ru](mailto:your.email@example.com) |
+| **GitHub** | [github.com/tganeev](https://github.com/tganeev) |
+| **Telegram** | [t.me/tganeev](https://t.me/tganeev) |
+
+<p align="center">
+  <sub>Built with ❤️ and open source</sub>
+</p>
