@@ -4,18 +4,17 @@ import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Book
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
-import java.util.concurrent.TimeUnit
 
 interface SyncApi {
     @POST("/api/sync")
@@ -27,7 +26,7 @@ interface SyncApi {
 
 class SyncManager(
     private val context: Context,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
 ) {
     companion object {
         private const val TAG = "SyncManager"
@@ -123,7 +122,6 @@ class SyncManager(
                     // Логируем отправляемые данные для отладки
                     val bookJson = gson.toJson(syncBook)
                     Log.d(TAG, "Book JSON: $bookJson")
-
                 } catch (e: Exception) {
                     Log.e(TAG, "Error preparing book ${book.title}", e)
                 }

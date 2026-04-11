@@ -105,8 +105,6 @@ open class ReaderActivity : AppCompatActivity() {
         startReadingTimer()
     }
 
-
-
     private fun createReaderFragment(readerData: ReaderInitData): BaseReaderFragment? {
         val readerClass: Class<out Fragment>? = when (readerData) {
             is EpubReaderInitData -> EpubReaderFragment::class.java
@@ -248,7 +246,7 @@ open class ReaderActivity : AppCompatActivity() {
 
     private fun saveReadingTime() {
         lifecycleScope.launch {
-            //model.saveReadingTime()
+            // model.saveReadingTime()
             Timber.d("Reading time saved on activity stop")
         }
     }
@@ -268,9 +266,6 @@ open class ReaderActivity : AppCompatActivity() {
     fun getFormattedReadingTime(): String {
         return model.getFormattedReadingTime()
     }
-
-
-
 
     // ===== КОНЕЦ НОВЫХ МЕТОДОВ =====
 

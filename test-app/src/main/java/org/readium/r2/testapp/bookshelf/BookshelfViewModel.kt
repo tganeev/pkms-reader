@@ -19,7 +19,6 @@ import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.reader.OpeningError
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.EventChannel
-import timber.log.Timber
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -59,8 +58,6 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         app.bookshelf.addPublicationFromWeb(url)
     }
 
-
-
     fun openPublication(
         bookId: Long,
     ) {
@@ -76,8 +73,6 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
                 }
         }
     }
-
-
 
     sealed class Event {
 

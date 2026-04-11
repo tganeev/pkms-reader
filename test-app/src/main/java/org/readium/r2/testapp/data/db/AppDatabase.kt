@@ -20,7 +20,7 @@ import org.readium.r2.testapp.data.model.*
     version = 3,
     exportSchema = false
 )
-@TypeConverters(HighlightConverters::class, Converters::class)  // Добавляем Converters
+@TypeConverters(HighlightConverters::class, Converters::class) // Добавляем Converters
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun booksDao(): BooksDao
@@ -57,7 +57,8 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 // Создаем таблицу reading_stats
-                database.execSQL("""
+                database.execSQL(
+                    """
                     CREATE TABLE IF NOT EXISTS reading_stats (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         book_id INTEGER NOT NULL,
@@ -67,7 +68,8 @@ abstract class AppDatabase : RoomDatabase() {
                         FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
                         UNIQUE(book_id, date)
                     )
-                """)
+                """
+                )
 
                 // Создаем индексы
                 database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_book_id ON reading_stats(book_id)")

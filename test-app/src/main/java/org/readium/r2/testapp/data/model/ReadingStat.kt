@@ -30,11 +30,11 @@ data class ReadingStat(
     val bookId: Long,
 
     @ColumnInfo(name = "date")
-    val date: LocalDate,  // LocalDate будет автоматически конвертироваться через TypeConverter
+    val date: LocalDate, // LocalDate будет автоматически конвертироваться через TypeConverter
 
     @ColumnInfo(name = "pages_read", defaultValue = "0")
     val pagesRead: Int = 0,
 
     @ColumnInfo(name = "hours_read", defaultValue = "0")
-    val hoursRead: Double = 0.0
+    val hoursRead: Double = 0.0,
 )

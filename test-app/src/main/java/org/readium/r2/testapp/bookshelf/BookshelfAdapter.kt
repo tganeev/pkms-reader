@@ -15,7 +15,6 @@ import java.util.*
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.ItemRecycleBookBinding
-import org.readium.r2.testapp.utils.singleClick
 
 class BookshelfAdapter(
     private val onBookClick: (Book) -> Unit,
@@ -147,7 +146,7 @@ class BookshelfAdapter(
             return when {
                 days == 0L -> "сегодня"
                 days == 1L -> "вчера"
-                days < 7 -> "${days} дн. назад"
+                days < 7 -> "$days дн. назад"
                 else -> SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(date)
             }
         }

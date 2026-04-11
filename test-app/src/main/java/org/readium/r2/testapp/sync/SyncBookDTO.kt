@@ -1,7 +1,6 @@
 package org.readium.r2.testapp.sync
 
 import com.google.gson.annotations.SerializedName
-import java.time.LocalDate
 
 data class SyncBookDTO(
     @SerializedName("identifier")
@@ -23,18 +22,18 @@ data class SyncBookDTO(
     val categoryId: Long? = null,
 
     @SerializedName("readingStats")
-    val readingStats: List<SyncReadingStatDTO> = emptyList()
+    val readingStats: List<SyncReadingStatDTO> = emptyList(),
 )
 
 data class SyncReadingStatDTO(
     @SerializedName("date")
-    val date: String,  // Используем String для даты в формате ISO
+    val date: String, // Используем String для даты в формате ISO
 
     @SerializedName("pagesRead")
     val pagesRead: Int,
 
     @SerializedName("hoursRead")
-    val hoursRead: Double
+    val hoursRead: Double,
 )
 
 data class SyncRequestDTO(
@@ -42,7 +41,7 @@ data class SyncRequestDTO(
     val username: String,
 
     @SerializedName("books")
-    val books: List<SyncBookDTO>
+    val books: List<SyncBookDTO>,
 )
 
 data class SyncResponseDTO(
@@ -65,5 +64,5 @@ data class SyncResponseDTO(
     val message: String,
 
     @SerializedName("error")
-    val error: String? = null
+    val error: String? = null,
 )

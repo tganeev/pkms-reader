@@ -3,9 +3,9 @@ package org.readium.r2.testapp.data.model
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.io.Serializable
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.mediatype.MediaType
-import java.io.Serializable
 
 @Entity(tableName = Book.TABLE_NAME)
 data class Book(
@@ -33,7 +33,7 @@ data class Book(
     @ColumnInfo(name = PAGES_READ, defaultValue = "0")
     var pagesRead: Int = 0,
     @ColumnInfo(name = LAST_READ_DATE)
-    var lastReadDate: Long? = null
+    var lastReadDate: Long? = null,
 ) : Serializable {
     constructor(
         id: Long? = null,
@@ -47,7 +47,7 @@ data class Book(
         cover: String,
         readingTime: Long = 0,
         pagesRead: Int = 0,
-        lastReadDate: Long? = null
+        lastReadDate: Long? = null,
     ) : this(
         id = id,
         creation = creation,

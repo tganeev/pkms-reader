@@ -8,7 +8,6 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.*
 
-
 @Dao
 interface BooksDao {
 
@@ -43,7 +42,7 @@ interface BooksDao {
         readingTime: Long,
         pagesRead: Int,
         locator: String,
-        lastReadDate: Long
+        lastReadDate: Long,
     )
 
     @Query(
@@ -95,7 +94,7 @@ interface BooksDao {
     suspend fun insertReadingStat(stat: ReadingStat)
 
     @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
-    suspend fun deleteReadingStat(bookId: Long, date: String)  // Используем String вместо LocalDate
+    suspend fun deleteReadingStat(bookId: Long, date: String) // Используем String вместо LocalDate
 
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
@@ -117,18 +116,18 @@ interface BooksDao {
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun getReadingStatByDate(bookId: Long, date: String): ReadingStat?
 
-    @Query("""
+    @Query(
+        """
     UPDATE reading_stats 
     SET hours_read = hours_read + :hoursToAdd,
         pages_read = pages_read + :pagesToAdd
     WHERE book_id = :bookId AND date = :date
-""")
+"""
+    )
     suspend fun addReadingTimeToDate(
         bookId: Long,
         date: String,
         hoursToAdd: Double,
-        pagesToAdd: Int
+        pagesToAdd: Int,
     )
-
-
 }

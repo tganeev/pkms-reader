@@ -162,7 +162,7 @@ class EpubReaderFragment : VisualReaderFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // Display page number labels if the book contains a `page-list` navigation document.
-                //(navigator as? DecorableNavigator)?.applyPageNumberDecorations()
+                // (navigator as? DecorableNavigator)?.applyPageNumberDecorations()
             }
         }
 

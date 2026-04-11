@@ -86,7 +86,6 @@ import org.readium.r2.testapp.utils.padSystemUi
 import org.readium.r2.testapp.utils.showSystemUi
 import org.readium.r2.testapp.utils.toggleSystemUi
 import org.readium.r2.testapp.utils.viewLifecycle
-import timber.log.Timber
 
 /*
  * Base reader fragment class
@@ -97,7 +96,6 @@ import timber.log.Timber
 abstract class VisualReaderFragment : BaseReaderFragment() {
 
     protected var binding: FragmentReaderBinding by viewLifecycle()
-
 
     private lateinit var navigatorFragment: Fragment
 
@@ -216,11 +214,11 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
             if (isLandscape && navigationBars.right > 0) {
                 // Горизонтальная ориентация — навигация справа
                 layoutParams?.rightMargin = navigationBars.right + 1
-                layoutParams?.bottomMargin = 0  // обычный отступ снизу
+                layoutParams?.bottomMargin = 0 // обычный отступ снизу
             } else {
                 // Вертикальная ориентация — навигация снизу
                 layoutParams?.bottomMargin = navigationBars.bottom + 1
-                layoutParams?.rightMargin = 0  // обычный отступ справа
+                layoutParams?.rightMargin = 0 // обычный отступ справа
             }
 
             binding.currentPageText.layoutParams = layoutParams
@@ -279,8 +277,6 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
         isPageIndicatorExpanded = !isPageIndicatorExpanded
         updatePageIndicator(currentPageNumber, totalPagesNumber)
     }
-
-
 
     private suspend fun setupHighlights(scope: CoroutineScope) {
         (navigator as? DecorableNavigator)?.let { navigator ->

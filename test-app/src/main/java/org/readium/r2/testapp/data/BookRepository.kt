@@ -4,7 +4,6 @@ import androidx.annotation.ColorInt
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -33,7 +32,7 @@ class BookRepository(
         bookId: Long,
         readingTime: Long,
         pagesRead: Int,
-        locator: Locator
+        locator: Locator,
     ) {
         booksDao.updateReadingStats(
             id = bookId,

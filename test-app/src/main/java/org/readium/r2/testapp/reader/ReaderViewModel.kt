@@ -208,12 +208,14 @@ class ReaderViewModel(
         val newDailyHours = (todayStat?.hoursRead ?: 0.0) + deltaHours
         val newDailyPages = (todayStat?.pagesRead ?: 0) + incrementalPages
 
-        bookRepository.saveReadingStat(ReadingStat(
-            bookId = bookId,
-            date = today,
-            pagesRead = newDailyPages,
-            hoursRead = newDailyHours
-        ))
+        bookRepository.saveReadingStat(
+            ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = newDailyPages,
+                hoursRead = newDailyHours
+            )
+        )
 
         // 2. Обновляем ОБЩЕЕ время на обложке НАПРЯМУЮ (без SUM, без потери точности)
         val book = bookRepository.get(bookId)

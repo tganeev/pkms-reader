@@ -6,11 +6,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import timber.log.Timber
 
 class ReadingTimer(
     private val scope: CoroutineScope,
-    initialTime: Long = 0
+    initialTime: Long = 0,
 ) {
     private val _elapsedSeconds = MutableStateFlow(initialTime)
     val elapsedSeconds: StateFlow<Long> = _elapsedSeconds.asStateFlow()

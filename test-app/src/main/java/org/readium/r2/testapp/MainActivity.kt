@@ -9,6 +9,7 @@ package org.readium.r2.testapp
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.WindowManager
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -24,7 +25,6 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.sync.SyncManager
-import android.view.WindowManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -132,8 +132,6 @@ class MainActivity : AppCompatActivity() {
         // Восстанавливаем стандартное поведение
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
-
-
 
     override fun onSupportNavigateUp(): Boolean {
         return navController.navigateUp() || super.onSupportNavigateUp()
